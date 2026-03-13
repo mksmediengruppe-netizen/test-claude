@@ -513,6 +513,7 @@ def list_chats():
 @require_auth
 def create_chat():
     """Create a new chat."""
+    import html as html_module
     data = request.get_json() or {}
     chat_id = str(uuid.uuid4())[:8]
     now = datetime.now(timezone.utc).isoformat()
@@ -520,10 +521,14 @@ def create_chat():
     db = db_read()
     user_settings = db["users"].get(request.user_id, {}).get("settings", {})
 
+    # XSS sanitization
+    raw_title = data.get("title", "Новый чат")
+    safe_title = html_module.escape(raw_title)
+
     chat = {
         "id": chat_id,
         "user_id": request.user_id,
-        "title": data.get("title", "Новый чат"),
+        "title": safe_title,
         "created_at": now,
         "updated_at": now,
         "messages": [],
@@ -2337,6 +2342,24 @@ def list_feedback():
     db = _load_db()
     feedback = db.get("feedback", [])
     return jsonify({"success": True, "feedback": feedback[-100:]})
+
+
+# ══════════════════════════════════════════════════════════════════
+# ██ SECURITY CHECK API ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/security/check-prompt", methods=["POST"])
+@require_auth
+def check_prompt_injection():
+    """Check text for prompt injection patterns."""
+    try:
+        from security import detect_prompt_injection
+        data = request.get_json() or {}
+        text = data.get("text", "")
+        result = detect_prompt_injection(text)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ══════════════════════════════════════════════════════════════════

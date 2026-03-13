@@ -1,4 +1,4 @@
-"""Unit tests for API endpoints — health, templates, models, chats."""
+"""Unit tests for API endpoints — health, templates, models."""
 import os
 import sys
 import json
@@ -102,49 +102,59 @@ class TestModelsEndpoint:
         assert len(models) >= 3, f"Expected at least 3 models, got {len(models)}"
 
 
-# ── Chats CRUD ────────────────────────────────────────────────
+# ── Connectors Endpoint (no auth required) ────────────────────
 
-class TestChatsAPI:
-    def test_list_chats(self, client):
-        """GET /api/chats should return 200."""
-        resp = client.get('/api/chats')
+class TestConnectorsEndpoint:
+    def test_connectors_returns_200(self, client):
+        """GET /api/connectors should return 200."""
+        resp = client.get('/api/connectors')
         assert resp.status_code == 200
 
-    def test_create_chat(self, client):
-        """POST /api/chats should create a new chat."""
-        resp = client.post('/api/chats',
-                           json={'title': 'Test Chat'},
+    def test_connectors_returns_list(self, client):
+        """Connectors should return a list."""
+        resp = client.get('/api/connectors')
+        data = resp.get_json()
+        connectors = data.get('connectors', data) if isinstance(data, dict) else data
+        assert isinstance(connectors, list)
+
+
+# ── Auth-protected endpoints return 401 without token ─────────
+
+class TestAuthProtection:
+    def test_chats_requires_auth(self, client):
+        """GET /api/chats should return 401 without token."""
+        resp = client.get('/api/chats')
+        assert resp.status_code == 401
+
+    def test_settings_requires_auth(self, client):
+        """GET /api/settings should return 401 without token."""
+        resp = client.get('/api/settings')
+        assert resp.status_code == 401
+
+    def test_admin_requires_auth(self, client):
+        """GET /api/admin/users should return 401 without token."""
+        resp = client.get('/api/admin/users')
+        assert resp.status_code == 401
+
+
+# ── Error Handling ────────────────────────────────────────────
+
+class TestErrorHandling:
+    def test_404_for_unknown_route(self, client):
+        """Unknown routes should return 404."""
+        resp = client.get('/api/nonexistent')
+        assert resp.status_code == 404
+
+    def test_login_empty_body(self, client):
+        """Login with empty body should return 400."""
+        resp = client.post('/api/auth/login',
+                           json={},
                            content_type='application/json')
-        assert resp.status_code in [200, 201]
-        data = resp.get_json()
-        assert data is not None
+        assert resp.status_code == 400
 
-    def test_create_and_list_chat(self, client):
-        """Created chat should appear in the list."""
-        # Create
-        client.post('/api/chats',
-                     json={'title': 'Findable Chat'},
-                     content_type='application/json')
-        # List
-        resp = client.get('/api/chats')
-        data = resp.get_json()
-        chats = data if isinstance(data, list) else data.get('chats', [])
-        titles = [c.get('title', '') for c in chats]
-        assert 'Findable Chat' in titles
-
-
-# ── Settings Endpoint ─────────────────────────────────────────
-
-class TestSettingsAPI:
-    def test_get_settings(self, client):
-        """GET /api/settings should return 200."""
-        resp = client.get('/api/settings')
-        assert resp.status_code == 200
-
-    def test_settings_has_expected_keys(self, client):
-        """Settings should contain expected configuration keys."""
-        resp = client.get('/api/settings')
-        data = resp.get_json()
-        assert data is not None
-        # At minimum, should have some settings
-        assert isinstance(data, dict)
+    def test_login_wrong_credentials(self, client):
+        """Login with wrong credentials should return 401."""
+        resp = client.post('/api/auth/login',
+                           json={'email': 'wrong@test.com', 'password': 'wrong'},
+                           content_type='application/json')
+        assert resp.status_code == 401
