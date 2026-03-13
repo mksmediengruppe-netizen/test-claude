@@ -85,6 +85,13 @@ try:
 except ImportError:
     pass
 
+_HAS_WHISPER = False
+try:
+    import whisper as _whisper_module
+    _HAS_WHISPER = True
+except ImportError:
+    pass
+
 
 # Supported file extensions
 SUPPORTED_EXTENSIONS = {
@@ -240,8 +247,9 @@ def _detect_type(filepath):
         ".rar": "archive", ".7z": "archive",
         # Audio/Video
         ".mp3": "audio", ".wav": "audio", ".ogg": "audio",
+        ".flac": "audio", ".aac": "audio", ".wma": "audio", ".m4a": "audio",
         ".mp4": "video", ".avi": "video", ".mkv": "video",
-        ".webm": "video",
+        ".webm": "video", ".mov": "video", ".flv": "video",
     }
 
     return type_map.get(ext, "unknown")
@@ -512,8 +520,9 @@ def _read_code(filepath, result):
     result.text = f"```{lang}\n{content}\n```"
 
 
-def _read_zip(filepath, result):
-    """Read ZIP archive — list contents and extract text files."""
+def _read_zip(filepath, result, depth=0):
+    """Read ZIP archive — list contents, extract text, recursively read nested archives."""
+    MAX_DEPTH = 3
     try:
         with zipfile.ZipFile(filepath, "r") as zf:
             for info in zf.infolist():
@@ -525,13 +534,45 @@ def _read_zip(filepath, result):
                 }
                 result.children.append(child)
 
-            # Try to read small text files
             text_parts = []
-            for info in zf.infolist()[:10]:  # Max 10 files
-                if info.is_dir() or info.file_size > 100_000:
+            for info in zf.infolist()[:20]:
+                if info.is_dir() or info.file_size > 200_000:
                     continue
                 ext = Path(info.filename).suffix.lower()
-                if ext in (".txt", ".md", ".csv", ".json", ".py", ".js", ".html", ".css", ".yaml", ".yml"):
+
+                # Recursively read nested archives
+                if ext in (".zip", ".tar", ".gz", ".tgz") and depth < MAX_DEPTH:
+                    try:
+                        import tempfile
+                        nested_data = zf.read(info.filename)
+                        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+                            tmp.write(nested_data)
+                            tmp_path = tmp.name
+                        nested_result = FileReadResult(info.filename, ext.lstrip("."), info.file_size)
+                        if ext == ".zip":
+                            _read_zip(tmp_path, nested_result, depth + 1)
+                        else:
+                            _read_tar(tmp_path, nested_result, depth + 1)
+                        if nested_result.text:
+                            text_parts.append(f"--- [NESTED] {info.filename} ---\n{nested_result.text[:3000]}")
+                        if nested_result.children:
+                            for nc in nested_result.children[:10]:
+                                result.children.append({
+                                    "name": f"{info.filename}/{nc['name']}",
+                                    "size": nc.get("size", 0),
+                                    "is_dir": nc.get("is_dir", False),
+                                    "nested": True
+                                })
+                        try:
+                            os.unlink(tmp_path)
+                        except Exception:
+                            pass
+                    except Exception as e:
+                        text_parts.append(f"--- [NESTED] {info.filename} --- [Error: {e}]")
+
+                elif ext in (".txt", ".md", ".csv", ".json", ".py", ".js", ".ts",
+                             ".html", ".css", ".yaml", ".yml", ".xml", ".sql",
+                             ".sh", ".toml", ".ini", ".cfg", ".env"):
                     try:
                         content = zf.read(info.filename).decode("utf-8", errors="replace")
                         text_parts.append(f"--- {info.filename} ---\n{content[:5000]}")
@@ -544,11 +585,13 @@ def _read_zip(filepath, result):
         result.error = "Invalid or corrupted ZIP file"
 
 
-def _read_tar(filepath, result):
-    """Read TAR/GZ archive."""
+def _read_tar(filepath, result, depth=0):
+    """Read TAR/GZ archive — list contents, recursively read nested archives."""
+    MAX_DEPTH = 3
     try:
         mode = "r:gz" if filepath.endswith((".gz", ".tgz")) else "r"
         with tarfile.open(filepath, mode) as tf:
+            text_parts = []
             for member in tf.getmembers():
                 child = {
                     "name": member.name,
@@ -556,8 +599,186 @@ def _read_tar(filepath, result):
                     "is_dir": member.isdir(),
                 }
                 result.children.append(child)
+
+                if not member.isdir() and member.size < 200_000:
+                    ext = Path(member.name).suffix.lower()
+                    if ext in (".txt", ".md", ".csv", ".json", ".py", ".js", ".ts",
+                               ".html", ".css", ".yaml", ".yml", ".xml", ".sql",
+                               ".sh", ".toml", ".ini"):
+                        try:
+                            f = tf.extractfile(member)
+                            if f:
+                                content = f.read(5000).decode("utf-8", errors="replace")
+                                text_parts.append(f"--- {member.name} ---\n{content}")
+                        except Exception:
+                            pass
+                    elif ext in (".zip", ".tar", ".gz", ".tgz") and depth < MAX_DEPTH:
+                        try:
+                            import tempfile
+                            f = tf.extractfile(member)
+                            if f:
+                                with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+                                    tmp.write(f.read())
+                                    tmp_path = tmp.name
+                                nested_result = FileReadResult(member.name, ext.lstrip("."), member.size)
+                                if ext == ".zip":
+                                    _read_zip(tmp_path, nested_result, depth + 1)
+                                else:
+                                    _read_tar(tmp_path, nested_result, depth + 1)
+                                if nested_result.text:
+                                    text_parts.append(f"--- [NESTED] {member.name} ---\n{nested_result.text[:3000]}")
+                                if nested_result.children:
+                                    for nc in nested_result.children[:10]:
+                                        result.children.append({
+                                            "name": f"{member.name}/{nc['name']}",
+                                            "size": nc.get("size", 0),
+                                            "is_dir": nc.get("is_dir", False),
+                                            "nested": True
+                                        })
+                                try:
+                                    os.unlink(tmp_path)
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+
+            if text_parts:
+                result.text = "\n\n".join(text_parts[:20])
     except Exception as e:
         result.error = f"Failed to read archive: {e}"
+
+
+def _read_audio(filepath, result):
+    """Read audio files — transcribe with Whisper if available."""
+    ext = Path(filepath).suffix.lower()
+    result.metadata["format"] = ext.lstrip(".")
+
+    # Get duration via ffprobe if available
+    try:
+        import subprocess
+        probe = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", filepath],
+            capture_output=True, text=True, timeout=10
+        )
+        if probe.returncode == 0 and probe.stdout.strip():
+            duration = float(probe.stdout.strip())
+            result.metadata["duration_seconds"] = round(duration, 1)
+            result.metadata["duration"] = f"{int(duration // 60)}:{int(duration % 60):02d}"
+    except Exception:
+        pass
+
+    # Transcribe with Whisper
+    if _HAS_WHISPER:
+        try:
+            model = _whisper_module.load_model("base")  # base model — fast, ~150MB
+            transcription = model.transcribe(filepath, language=None)  # auto-detect
+            text = transcription.get("text", "").strip()
+            detected_lang = transcription.get("language", "unknown")
+            result.metadata["detected_language"] = detected_lang
+
+            if text:
+                segments = transcription.get("segments", [])
+                timestamped = []
+                for seg in segments:
+                    start = seg.get("start", 0)
+                    end = seg.get("end", 0)
+                    seg_text = seg.get("text", "").strip()
+                    if seg_text:
+                        timestamped.append(
+                            f"[{int(start//60)}:{int(start%60):02d} - {int(end//60)}:{int(end%60):02d}] {seg_text}"
+                        )
+
+                result.text = f"[Whisper transcription — language: {detected_lang}]\n\n{text}"
+                if timestamped:
+                    result.text += "\n\n--- Timestamped segments ---\n" + "\n".join(timestamped[:200])
+            else:
+                result.text = "[No speech detected in audio file]"
+        except Exception as e:
+            result.text = f"[Whisper transcription failed: {e}]"
+            logger.warning(f"Whisper failed for {filepath}: {e}")
+    else:
+        result.text = "[Audio file. Whisper not installed — install with: pip install openai-whisper]"
+
+
+def _read_video(filepath, result):
+    """Read video files — extract audio and transcribe, get metadata."""
+    ext = Path(filepath).suffix.lower()
+    result.metadata["format"] = ext.lstrip(".")
+
+    # Get video metadata via ffprobe
+    try:
+        import subprocess
+        probe = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-show_entries",
+             "format=duration,size:stream=width,height,codec_name,codec_type",
+             "-of", "json", filepath],
+            capture_output=True, text=True, timeout=15
+        )
+        if probe.returncode == 0:
+            import json as _json
+            info = _json.loads(probe.stdout)
+            fmt = info.get("format", {})
+            if "duration" in fmt:
+                duration = float(fmt["duration"])
+                result.metadata["duration_seconds"] = round(duration, 1)
+                result.metadata["duration"] = f"{int(duration // 60)}:{int(duration % 60):02d}"
+            streams = info.get("streams", [])
+            for s in streams:
+                if s.get("codec_type") == "video":
+                    result.metadata["resolution"] = f"{s.get('width', '?')}x{s.get('height', '?')}"
+                    result.metadata["video_codec"] = s.get("codec_name", "unknown")
+                elif s.get("codec_type") == "audio":
+                    result.metadata["audio_codec"] = s.get("codec_name", "unknown")
+    except Exception:
+        pass
+
+    # Extract audio and transcribe with Whisper
+    if _HAS_WHISPER:
+        try:
+            import subprocess
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_path = tmp.name
+            subprocess.run(
+                ["ffmpeg", "-i", filepath, "-vn", "-acodec", "pcm_s16le",
+                 "-ar", "16000", "-ac", "1", "-y", tmp_path],
+                capture_output=True, timeout=120
+            )
+            if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
+                model = _whisper_module.load_model("base")
+                transcription = model.transcribe(tmp_path, language=None)
+                text = transcription.get("text", "").strip()
+                detected_lang = transcription.get("language", "unknown")
+                result.metadata["detected_language"] = detected_lang
+
+                if text:
+                    segments = transcription.get("segments", [])
+                    timestamped = []
+                    for seg in segments:
+                        start = seg.get("start", 0)
+                        end = seg.get("end", 0)
+                        seg_text = seg.get("text", "").strip()
+                        if seg_text:
+                            timestamped.append(
+                                f"[{int(start//60)}:{int(start%60):02d} - {int(end//60)}:{int(end%60):02d}] {seg_text}"
+                            )
+                    result.text = f"[Video transcription via Whisper — language: {detected_lang}]\n\n{text}"
+                    if timestamped:
+                        result.text += "\n\n--- Timestamped segments ---\n" + "\n".join(timestamped[:200])
+                else:
+                    result.text = "[No speech detected in video]"
+            else:
+                result.text = "[Failed to extract audio from video — ffmpeg error]"
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+        except Exception as e:
+            result.text = f"[Video transcription failed: {e}]"
+            logger.warning(f"Video transcription failed for {filepath}: {e}")
+    else:
+        result.text = "[Video file. Whisper not installed — install with: pip install openai-whisper]"
 
 
 def _read_xml(filepath, result):
@@ -619,6 +840,8 @@ def read_file(filepath: str) -> FileReadResult:
             "zip": _read_zip,
             "tar": _read_tar,
             "gzip": _read_tar,
+            "audio": _read_audio,
+            "video": _read_video,
         }
 
         reader = readers.get(file_type)
@@ -661,6 +884,15 @@ def get_supported_formats():
         "archives": {
             "zip": {"available": True, "library": "built-in"},
             "tar/gz": {"available": True, "library": "built-in"},
+            "recursive_nested": {"available": True, "library": "built-in", "max_depth": 3},
+        },
+        "audio": {
+            "mp3/wav/ogg/flac/aac/m4a": {"available": _HAS_WHISPER, "library": "openai-whisper"},
+            "transcription": {"available": _HAS_WHISPER, "library": "openai-whisper (base model)"},
+        },
+        "video": {
+            "mp4/avi/mkv/webm/mov": {"available": _HAS_WHISPER, "library": "openai-whisper + ffmpeg"},
+            "metadata": {"available": True, "library": "ffprobe"},
         },
         "code": {
             "all languages": {"available": True, "library": "built-in"},

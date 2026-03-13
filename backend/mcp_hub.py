@@ -198,6 +198,10 @@ class MCPHub:
         """List registered MCP servers."""
         return list(self._mcp_servers.values())
 
+    def list_connectors(self) -> List[Dict]:
+        """List all available connectors."""
+        return ConnectorRegistry.list_connectors()
+
     def connect(self, user_id: str, connector_id: str, token_data: Dict) -> Dict:
         """Connect a user to a service."""
         connector = self.registry.get_connector(connector_id)

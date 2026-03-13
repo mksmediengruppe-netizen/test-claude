@@ -892,16 +892,8 @@ class AgentLoop:
                 if not file_path:
                     return {"success": False, "error": "file_path is required"}
                 try:
-                    from file_reader import read_file
-                    result = read_file(file_path)
-                    text = result.to_text()
-                    return {
-                        "success": True,
-                        "filename": result.filename,
-                        "ocr_text": result.text,
-                        "metadata": result.metadata,
-                        "description": f"Image analyzed: {result.filename} ({result.metadata.get('width', '?')}x{result.metadata.get('height', '?')}). OCR text: {result.text[:500] if result.text else 'No text detected'}"
-                    }
+                    result = self._analyze_image_vision(file_path, question)
+                    return result
                 except Exception as e:
                     return {"success": False, "error": f"Image analysis error: {str(e)}"}
 
@@ -1094,7 +1086,122 @@ class AgentLoop:
     def _browser_with_retry(self, func):
         return func()
 
-    # ── Image Generation ────────────────────────────────────────────
+    # ── Vision API (Image Analysis) ─────────────────────────────────────────
+
+    def _analyze_image_vision(self, file_path, question="Describe this image in detail"):
+        """
+        Analyze an image using Vision API via OpenRouter.
+        Supports: screenshots, charts, diagrams, photos, handwritten notes.
+        Falls back to OCR if Vision API is unavailable.
+        """
+        import base64
+        import os
+        from pathlib import Path
+
+        if not os.path.exists(file_path):
+            return {"success": False, "error": f"File not found: {file_path}"}
+
+        filename = Path(file_path).name
+        ext = Path(file_path).suffix.lower()
+
+        # Get image metadata
+        metadata = {}
+        try:
+            from PIL import Image
+            with Image.open(file_path) as img:
+                metadata = {
+                    "width": img.width,
+                    "height": img.height,
+                    "format": img.format,
+                    "mode": img.mode,
+                    "size_bytes": os.path.getsize(file_path)
+                }
+        except Exception:
+            metadata = {"size_bytes": os.path.getsize(file_path)}
+
+        # Try Vision API via OpenRouter (GPT-4o-mini with vision)
+        vision_description = None
+        try:
+            with open(file_path, "rb") as f:
+                image_data = base64.b64encode(f.read()).decode("utf-8")
+
+            mime_map = {
+                ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp"
+            }
+            mime_type = mime_map.get(ext, "image/png")
+
+            import requests
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "openai/gpt-4o-mini",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": f"{question}\n\nPlease provide a detailed analysis. If there is text in the image, transcribe it. If there are charts/diagrams, describe the data. If it's a screenshot, describe the UI elements. Respond in the same language as the question."
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:{mime_type};base64,{image_data}"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    "max_tokens": 2000
+                },
+                timeout=60
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                vision_description = data["choices"][0]["message"]["content"]
+                logger.info(f"Vision API analyzed {filename} successfully")
+            else:
+                logger.warning(f"Vision API returned {response.status_code}: {response.text[:200]}")
+        except Exception as e:
+            logger.warning(f"Vision API failed, falling back to OCR: {e}")
+
+        # Fallback: OCR via file_reader
+        ocr_text = None
+        try:
+            from file_reader import read_file
+            fr_result = read_file(file_path)
+            if fr_result.text and "No text detected" not in fr_result.text:
+                ocr_text = fr_result.text
+        except Exception:
+            pass
+
+        # Combine results
+        description_parts = []
+        if vision_description:
+            description_parts.append(vision_description)
+        if ocr_text and not vision_description:
+            description_parts.append(f"OCR Text: {ocr_text}")
+        elif ocr_text and vision_description:
+            description_parts.append(f"\n\nAdditional OCR Text: {ocr_text[:500]}")
+
+        description = "\n".join(description_parts) if description_parts else "Could not analyze image (no Vision API or OCR available)"
+
+        return {
+            "success": True,
+            "filename": filename,
+            "description": description,
+            "ocr_text": ocr_text or "",
+            "metadata": metadata,
+            "method": "vision_api" if vision_description else "ocr_fallback"
+        }
+
+    # ── Image Generation ─────────────────────────────────────────────────────
 
     def _generate_image(self, prompt, style="illustration", filename="image.png"):
         """
