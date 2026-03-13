@@ -36,7 +36,7 @@ from file_generator import (
     generate_file, get_file_info, get_file_path, list_files as list_generated_files,
     cleanup_old_files, GENERATED_DIR
 )
-from file_reader import UniversalFileReader
+from file_reader import read_file as read_any_file, FileReadResult, get_supported_formats
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
@@ -654,30 +654,31 @@ def process_uploaded_file(file_storage):
     }
 
     # Try UniversalFileReader for rich formats
-    reader = UniversalFileReader()
     rich_formats = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt',
                     '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg',
                     '.csv', '.json', '.xml', '.yaml', '.yml', '.md', '.html']
 
     if ext in rich_formats:
         try:
-            result = reader.read_file(filepath)
-            if result.get('success'):
-                content = result.get('content', '')
-                summary = result.get('summary', '')
-                tables = result.get('tables', [])
-                metadata = result.get('metadata', {})
+            result = read_any_file(filepath)
+            if not result.error:
+                content = result.text or ''
+                tables = result.tables or []
+                metadata = result.metadata or {}
 
-                parts = [f"📄 **{filename}** ({result.get('format', ext)})"]
-                if summary:
-                    parts.append(f"\n**Сводка:** {summary}")
+                parts = [f"📄 **{filename}** ({result.file_type})"]
+                if result.pages_count:
+                    parts.append(f"**Страниц:** {result.pages_count}")
                 if metadata:
                     meta_str = ", ".join(f"{k}: {v}" for k, v in list(metadata.items())[:5])
                     parts.append(f"**Метаданные:** {meta_str}")
                 if tables:
                     parts.append(f"\n**Таблицы ({len(tables)}):**")
                     for i, tbl in enumerate(tables[:3]):
-                        if isinstance(tbl, dict):
+                        if isinstance(tbl, list):
+                            # Table is list of rows
+                            parts.append(f"\n*Таблица {i+1}:*\n{str(tbl)[:2000]}")
+                        elif isinstance(tbl, dict):
                             parts.append(f"\n*Таблица {i+1}:*\n{tbl.get('markdown', tbl.get('text', str(tbl)))}")
                         else:
                             parts.append(f"\n*Таблица {i+1}:*\n{str(tbl)[:2000]}")
