@@ -32,6 +32,10 @@ from browser_agent import BrowserAgent
 from memory import get_memory, MemoryEntry, MemoryType
 from file_versioning import get_version_store
 from rate_limiter import get_rate_limiter, ToolContracts
+from file_generator import (
+    generate_file, get_file_info, get_file_path, list_files as list_generated_files,
+    cleanup_old_files, GENERATED_DIR
+)
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
@@ -45,6 +49,7 @@ DATA_DIR = os.environ.get("DATA_DIR", "/var/www/super-agent/backend/data")
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/var/www/super-agent/backend/uploads")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(GENERATED_DIR, exist_ok=True)
 
 DB_FILE = os.path.join(DATA_DIR, "database.json")
 _lock = threading.Lock()
@@ -1672,7 +1677,98 @@ def rate_limit_status():
     return jsonify(usage)
 
 
-# ── Export ─────────────────────────────────────────────────────
+# ── Generated Files ───────────────────────────────────────────────
+@app.route("/api/files/<file_id>/download", methods=["GET"])
+def download_generated_file(file_id):
+    """Download a generated file by ID. No auth required for direct download links."""
+    filepath, filename = get_file_path(file_id)
+    if not filepath or not os.path.exists(filepath):
+        return jsonify({"error": "File not found"}), 404
+
+    mime_type, _ = mimetypes.guess_type(filename)
+    if not mime_type:
+        mime_type = 'application/octet-stream'
+
+    with open(filepath, 'rb') as f:
+        data = f.read()
+
+    return Response(
+        data,
+        mimetype=mime_type,
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'Content-Length': str(len(data))
+        }
+    )
+
+
+@app.route("/api/files/<file_id>/preview", methods=["GET"])
+def preview_generated_file(file_id):
+    """Preview a generated file (HTML, images) in browser."""
+    filepath, filename = get_file_path(file_id)
+    if not filepath or not os.path.exists(filepath):
+        return jsonify({"error": "File not found"}), 404
+
+    mime_type, _ = mimetypes.guess_type(filename)
+    if not mime_type:
+        mime_type = 'text/plain'
+
+    with open(filepath, 'rb') as f:
+        data = f.read()
+
+    return Response(
+        data,
+        mimetype=mime_type,
+        headers={'Content-Disposition': f'inline; filename="{filename}"'}
+    )
+
+
+@app.route("/api/files/<file_id>/info", methods=["GET"])
+@require_auth
+def file_info(file_id):
+    """Get info about a generated file."""
+    info = get_file_info(file_id)
+    if not info:
+        return jsonify({"error": "File not found"}), 404
+    return jsonify(info)
+
+
+@app.route("/api/files", methods=["GET"])
+@require_auth
+def list_files_endpoint():
+    """List generated files for current user."""
+    chat_id = request.args.get("chat_id")
+    limit = int(request.args.get("limit", 50))
+    files = list_generated_files(chat_id=chat_id, user_id=request.user_id, limit=limit)
+    return jsonify({"files": files, "total": len(files)})
+
+
+@app.route("/api/files/generate", methods=["POST"])
+@require_auth
+def generate_file_endpoint():
+    """Generate a file on demand (from frontend)."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    content = data.get("content", "")
+    filename = data.get("filename", "file.txt")
+    title = data.get("title")
+
+    if not content:
+        return jsonify({"error": "content is required"}), 400
+
+    result = generate_file(
+        content=content,
+        filename=filename,
+        title=title,
+        chat_id=data.get("chat_id"),
+        user_id=request.user_id
+    )
+    return jsonify(result)
+
+
+# ── Export ─────────────────────────────────────────────────────────
 @app.route("/api/chats/<chat_id>/export", methods=["GET"])
 @require_auth
 def export_chat(chat_id):

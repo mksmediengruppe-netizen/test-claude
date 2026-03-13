@@ -1930,6 +1930,30 @@ function renderMarkdown(text) {
     html = html.replace(/^## (.+)$/gm, '<h3 style="margin:14px 0 8px;font-size:16px;">$1</h3>');
     html = html.replace(/^# (.+)$/gm, '<h2 style="margin:16px 0 10px;font-size:18px;">$1</h2>');
 
+    // Download links: [Скачать filename](/api/files/xxx/download)
+    html = html.replace(/\[([^\]]*Скачать[^\]]*)\]\((\/api\/files\/[^)]+)\)/g,
+        '<a href="$2" class="download-link" target="_blank" download>\u2B07 $1</a>');
+
+    // File download links: [filename](/api/files/xxx/download)
+    html = html.replace(/\[([^\]]+)\]\((\/api\/files\/[^)]+\/download)\)/g,
+        '<a href="$2" class="download-link" target="_blank" download>\u{1F4E5} $1</a>');
+
+    // File preview links: [Preview](/api/files/xxx/preview)
+    html = html.replace(/\[([^\]]+)\]\((\/api\/files\/[^)]+\/preview)\)/g,
+        '<a href="$2" class="preview-link" target="_blank">\u{1F441} $1</a>');
+
+    // Markdown links: [text](url)
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,
+        '<a href="$2" class="chat-link" target="_blank" rel="noopener">$1 \u2197</a>');
+
+    // Auto-detect bare URLs and make them clickable
+    html = html.replace(/(^|[^"=\/])(https?:\/\/[^\s<]+)/g,
+        '$1<a href="$2" class="chat-link" target="_blank" rel="noopener">$2</a>');
+
+    // Inline images from generated files: ![alt](/api/files/xxx/preview)
+    html = html.replace(/!\[([^\]]*)\]\((\/api\/files\/[^)]+)\)/g,
+        '<div class="generated-image"><img src="$2" alt="$1" style="max-width:100%;border-radius:8px;margin:8px 0;"><br><a href="$2" download class="download-link">\u2B07 Скачать $1</a></div>');
+
     // Lists
     html = html.replace(/^[•\-] (.+)$/gm, '<div style="padding-left:16px;">• $1</div>');
     html = html.replace(/^\d+\. (.+)$/gm, '<div style="padding-left:16px;">$&</div>');

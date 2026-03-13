@@ -2807,3 +2807,70 @@ a:hover { text-decoration: underline; }
     background: rgba(245, 158, 11, 0.15);
     color: #f59e0b;
 }
+
+/* ── Download & Chat Links ─────────────────────────────────── */
+.download-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));
+    color: white !important;
+    border-radius: 8px;
+    text-decoration: none !important;
+    font-size: 13px;
+    font-weight: 600;
+    margin: 4px 2px;
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+.download-link:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.5);
+    filter: brightness(1.1);
+    text-decoration: none !important;
+}
+
+.preview-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--accent-primary) !important;
+    border: 1px solid var(--accent-primary);
+    border-radius: 8px;
+    text-decoration: none !important;
+    font-size: 13px;
+    font-weight: 600;
+    margin: 4px 2px;
+    transition: all 0.2s;
+}
+.preview-link:hover {
+    background: rgba(99, 102, 241, 0.25);
+    transform: translateY(-1px);
+    text-decoration: none !important;
+}
+
+.chat-link {
+    color: var(--accent-primary) !important;
+    text-decoration: none !important;
+    border-bottom: 1px dashed var(--accent-primary);
+    transition: all 0.2s;
+}
+.chat-link:hover {
+    border-bottom-style: solid;
+    filter: brightness(1.2);
+    text-decoration: none !important;
+}
+
+.generated-image {
+    margin: 12px 0;
+    text-align: center;
+}
+.generated-image img {
+    max-width: 100%;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-color);
+}

@@ -161,6 +161,38 @@ TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
+            "name": "generate_file",
+            "description": "Generate a downloadable file for the user. Supports: .docx (Word), .pdf, .md (Markdown), .txt, .html, .xlsx (Excel), .csv, .json, .py, .js, .css, .sql and other code files. ALWAYS use this when user asks to create/generate a document, report, spreadsheet, or any file. The file will be available for download via a link.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {"type": "string", "description": "Full content of the file. For docx/pdf use markdown-like formatting (# headers, **bold**, - lists). For xlsx use CSV format (comma-separated). For html use full HTML."},
+                    "filename": {"type": "string", "description": "Filename with extension, e.g. 'report.docx', 'data.xlsx', 'page.html'"},
+                    "title": {"type": "string", "description": "Optional title for docx/pdf documents"}
+                },
+                "required": ["content", "filename"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_image",
+            "description": "Generate an image using AI (diagram, chart, illustration). Returns a download link. Use for: creating diagrams, charts, logos, illustrations, mockups.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prompt": {"type": "string", "description": "Detailed description of the image to generate"},
+                    "style": {"type": "string", "description": "Style: 'diagram', 'chart', 'illustration', 'photo', 'logo', 'mockup'", "default": "illustration"},
+                    "filename": {"type": "string", "description": "Output filename, e.g. 'diagram.png'", "default": "image.png"}
+                },
+                "required": ["prompt"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "task_complete",
             "description": "Mark the task as complete. Call this when all steps are done and verified.",
             "parameters": {
@@ -208,23 +240,33 @@ AGENT_SYSTEM_PROMPT = """Ты — Super Agent v5.0, автономный AI-ин
 - browser_check_site: проверить доступность сайта
 - browser_get_text: получить текст со страницы
 - browser_check_api: отправить HTTP запрос к API
+- generate_file: СОЗДАТЬ ФАЙЛ для скачивания пользователем (Word .docx, PDF .pdf, Markdown .md, Excel .xlsx, HTML .html, TXT .txt, CSV .csv, JSON .json, код .py/.js/.css/.sql и др.)
+- generate_image: сгенерировать картинку (диаграмма, график, иллюстрация, лого, мокап)
 - task_complete: завершить задачу
 
 ПРАВИЛА:
 1. ВСЕГДА используй инструменты для выполнения задач. НЕ просто описывай что нужно сделать.
-2. Если пользователь просит создать файл — СОЗДАЙ его через file_write.
-3. Если просит выполнить команду — ВЫПОЛНИ через ssh_execute.
-4. Если просит проверить сайт — ПРОВЕРЬ через browser_check_site.
-5. После каждого действия проверяй результат и исправляй ошибки.
-6. Когда всё готово — вызови task_complete с описанием результата.
-7. Если нужны SSH-данные (хост, пароль) и они не указаны — спроси у пользователя.
-8. Работай пошагово: планируй → выполняй → проверяй → итерируй.
-9. Отвечай на русском языке.
-10. Для каждого шага кратко объясняй что делаешь и зачем.
-11. При ошибке — анализируй причину и пробуй исправить (до 3 попыток).
+2. Если пользователь просит создать документ/файл — ОБЯЗАТЕЛЬНО используй generate_file чтобы дать ему скачиваемый файл.
+3. Если просит Word документ — generate_file с filename='document.docx'
+4. Если просит PDF — generate_file с filename='document.pdf'
+5. Если просит Excel/таблицу — generate_file с filename='data.xlsx' (content в CSV формате)
+6. Если просит HTML — generate_file с filename='page.html'
+7. Если просит картинку/диаграмму — generate_image
+8. Если просит выполнить команду на сервере — ssh_execute
+9. Если просит создать файл НА СЕРВЕРЕ — file_write (для деплоя)
+10. После каждого действия проверяй результат и исправляй ошибки.
+11. Когда всё готово — вызови task_complete с описанием результата.
+12. Если нужны SSH-данные (хост, пароль) и они не указаны — спроси у пользователя.
+13. Работай пошагово: планируй → выполняй → проверяй → итерируй.
+14. Отвечай на русском языке.
+15. Для каждого шага кратко объясняй что делаешь и зачем.
+16. При ошибке — анализируй причину и пробуй исправить (до 3 попыток).
+17. ВСЕГДА давай ссылки на скачивание файлов в формате: [Скачать filename](download_url)
+18. Если в ответе есть URL — оформляй их как кликабельные ссылки: [текст](url)
 
 ФОРМАТ ОТВЕТА:
 Кратко опиши что собираешься делать, затем вызови нужный инструмент.
+После генерации файла — ОБЯЗАТЕЛЬНО дай ссылку на скачивание.
 Не пиши длинных объяснений — ДЕЙСТВУЙ."""
 
 
@@ -545,6 +587,39 @@ class AgentLoop:
                     lambda: self.browser.check_api(url, method=method, data=data)
                 )
 
+            elif tool_name == "generate_file":
+                content = args.get("content", "")
+                filename = args.get("filename", "file.txt")
+                title = args.get("title")
+                if not content:
+                    return {"success": False, "error": "content is required"}
+
+                try:
+                    from file_generator import generate_file as gen_file
+                    result = gen_file(
+                        content=content,
+                        filename=filename,
+                        title=title,
+                        chat_id=getattr(self, '_chat_id', None),
+                        user_id=getattr(self, '_user_id', None)
+                    )
+                    return result
+                except Exception as e:
+                    return {"success": False, "error": f"File generation error: {str(e)}"}
+
+            elif tool_name == "generate_image":
+                prompt = args.get("prompt", "")
+                style = args.get("style", "illustration")
+                filename = args.get("filename", "image.png")
+                if not prompt:
+                    return {"success": False, "error": "prompt is required"}
+
+                try:
+                    result = self._generate_image(prompt, style, filename)
+                    return result
+                except Exception as e:
+                    return {"success": False, "error": f"Image generation error: {str(e)}"}
+
             elif tool_name == "task_complete":
                 summary = args.get("summary", "Task completed")
                 return {"success": True, "completed": True, "summary": summary}
@@ -584,9 +659,121 @@ class AgentLoop:
     def _browser_with_retry(self, func):
         return func()
 
-    # ── Self-Healing 2.0 ─────────────────────────────────────────
+    # ── Image Generation ────────────────────────────────────────────
 
-    def _analyze_error(self, tool_name, args, error_result):
+    def _generate_image(self, prompt, style="illustration", filename="image.png"):
+        """
+        Generate an image using matplotlib/pillow for diagrams/charts,
+        or placeholder for AI-generated images.
+        """
+        import uuid as _uuid
+        GENERATED_DIR = os.environ.get("GENERATED_DIR", "/var/www/super-agent/backend/generated")
+        os.makedirs(GENERATED_DIR, exist_ok=True)
+
+        file_id = str(_uuid.uuid4())[:12]
+        filepath = os.path.join(GENERATED_DIR, f"{file_id}_{filename}")
+
+        if style in ("chart", "diagram", "graph"):
+            # Use matplotlib for charts
+            try:
+                import matplotlib
+                matplotlib.use('Agg')
+                import matplotlib.pyplot as plt
+                import numpy as np
+
+                fig, ax = plt.subplots(figsize=(10, 6))
+                fig.patch.set_facecolor('#1a1a2e')
+                ax.set_facecolor('#16213e')
+
+                # Generate sample chart based on prompt keywords
+                if 'pie' in prompt.lower() or 'круг' in prompt.lower():
+                    ax.remove()
+                    ax = fig.add_subplot(111)
+                    sizes = [30, 25, 20, 15, 10]
+                    labels = ['A', 'B', 'C', 'D', 'E']
+                    colors = ['#6366f1', '#8b5cf6', '#a78bfa', '#c4b5fd', '#ddd6fe']
+                    ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%',
+                           startangle=90, textprops={'color': 'white'})
+                elif 'bar' in prompt.lower() or 'столб' in prompt.lower():
+                    x = np.arange(5)
+                    y = np.random.randint(10, 100, 5)
+                    ax.bar(x, y, color='#6366f1')
+                    ax.set_xlabel('Category', color='white')
+                    ax.set_ylabel('Value', color='white')
+                    ax.tick_params(colors='white')
+                else:
+                    x = np.linspace(0, 10, 100)
+                    y = np.sin(x) * np.random.uniform(0.8, 1.2)
+                    ax.plot(x, y, color='#6366f1', linewidth=2)
+                    ax.fill_between(x, y, alpha=0.3, color='#6366f1')
+                    ax.set_xlabel('X', color='white')
+                    ax.set_ylabel('Y', color='white')
+                    ax.tick_params(colors='white')
+
+                ax.set_title(prompt[:60], color='white', fontsize=12)
+                plt.tight_layout()
+                plt.savefig(filepath, dpi=150, bbox_inches='tight',
+                           facecolor=fig.get_facecolor())
+                plt.close()
+
+            except Exception as e:
+                return {"success": False, "error": f"Chart generation error: {str(e)}"}
+
+        else:
+            # For illustrations/photos/logos — create a styled placeholder
+            try:
+                from PIL import Image, ImageDraw, ImageFont
+
+                img = Image.new('RGB', (800, 600), color='#1a1a2e')
+                draw = ImageDraw.Draw(img)
+
+                # Draw decorative elements
+                for i in range(5):
+                    x1 = 50 + i * 150
+                    y1 = 100 + (i % 3) * 80
+                    draw.rounded_rectangle([x1, y1, x1+120, y1+120],
+                                          radius=15, fill='#6366f1', outline='#8b5cf6')
+
+                # Add text
+                try:
+                    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
+                    font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+                except Exception:
+                    font = ImageFont.load_default()
+                    font_small = font
+
+                draw.text((50, 30), prompt[:80], fill='white', font=font)
+                draw.text((50, 550), f"Generated by Super Agent | Style: {style}",
+                         fill='#888888', font=font_small)
+
+                img.save(filepath)
+
+            except Exception as e:
+                return {"success": False, "error": f"Image generation error: {str(e)}"}
+
+        if os.path.exists(filepath):
+            size = os.path.getsize(filepath)
+            # Register in file_generator registry
+            try:
+                from file_generator import _register_file
+                _register_file(file_id, filename, filepath, "png", size,
+                              getattr(self, '_chat_id', None),
+                              getattr(self, '_user_id', None))
+            except Exception:
+                pass
+
+            return {
+                "success": True,
+                "file_id": file_id,
+                "filename": filename,
+                "size": size,
+                "download_url": f"/api/files/{file_id}/download",
+                "preview_url": f"/api/files/{file_id}/preview"
+            }
+
+        return {"success": False, "error": "Failed to generate image"}
+
+    # ── Self-Healing 2.0 ─────────────────────────────────────────────  def _analyze_error(self, tool_name, args, error_result):
         """
         Анализировать ошибку и предложить варианты исправления.
         Returns: list of fix suggestions (up to 3)
