@@ -16,6 +16,7 @@ const state = {
         design_pro: false
     },
     isStreaming: false,
+    abortController: null,
     previewVisible: false,
     sidebarOpen: true,
     currentTab: 'chat'
@@ -340,11 +341,34 @@ function renderChatMessages() {
     container.scrollTop = container.scrollHeight;
 }
 
+// ═══ Stop Generation ════════════════════════════════════════
+function stopGeneration() {
+    if (state.abortController) {
+        state.abortController.abort();
+        state.abortController = null;
+    }
+    state.isStreaming = false;
+    updateSendButton();
+    showGenerationProgress(false);
+    toast('Генерация остановлена', 'info');
+}
+
 // ═══ Send Message ═══════════════════════════════════════════
 async function sendMessage() {
     const input = document.getElementById('chatInput');
     const message = input.value.trim();
-    if (!message || state.isStreaming) return;
+    if (!message) return;
+
+    // If streaming, stop current generation first
+    if (state.isStreaming) {
+        stopGeneration();
+        // Small delay then send new message
+        setTimeout(() => {
+            input.value = message;
+            sendMessage();
+        }, 200);
+        return;
+    }
 
     // Create chat if needed
     if (!state.currentChat) {
@@ -352,6 +376,7 @@ async function sendMessage() {
     }
 
     const chatId = state.currentChat.id;
+    state.abortController = new AbortController();
     state.isStreaming = true;
     updateSendButton();
     showGenerationProgress(true);
@@ -446,7 +471,8 @@ async function sendMessage() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${state.token}`
             },
-            body: JSON.stringify({ message, file_content: state._pendingFileContent || '' })
+            body: JSON.stringify({ message, file_content: state._pendingFileContent || '' }),
+            signal: state.abortController?.signal
         });
 
         state._pendingFileContent = '';
@@ -646,10 +672,7 @@ function formatFileSize(bytes) {
 
 // ═══ Settings ═══════════════════════════════════════════════
 function setVariant(variant) {
-    state.settings.variant = variant;
-    updateModelChips();
-    updateSettingsCards();
-    saveSettingsQuiet();
+    selectModelVariant(variant);
 }
 
 function selectVariantCard(variant) {
@@ -703,10 +726,100 @@ async function saveSettingsQuiet() {
     }
 }
 
+// ═══ Model Dropdown (Manus-style) ═══════════════════════════
+const VARIANTS = {
+    original: { name: 'Оригинал (Grok)', color: 'red', desc: 'xAI Grok — максимальная креативность', badge: '' },
+    premium: { name: 'Премиум (MiniMax M2.5)', color: 'green', desc: 'MiniMax M2.5 — лучший баланс цена/качество', badge: 'Рекомендуем' },
+    budget: { name: 'Бюджет (DeepSeek)', color: 'blue', desc: 'DeepSeek V3.2 — минимальная стоимость', badge: '' }
+};
+
+let _dropdownOpen = false;
+
 function updateModelChips() {
-    document.querySelectorAll('.model-chip').forEach(el => {
+    // Update dropdown button text
+    const btn = document.getElementById('modelDropdownBtn');
+    if (!btn) return;
+    const v = VARIANTS[state.settings.variant] || VARIANTS.premium;
+    btn.innerHTML = `
+        <span class="model-dropdown-dot ${v.color}"></span>
+        <span>${v.name}</span>
+        <svg class="model-dropdown-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+    `;
+    btn.classList.toggle('open', _dropdownOpen);
+
+    // Update dropdown menu active state
+    document.querySelectorAll('.model-dropdown-item').forEach(el => {
         el.classList.toggle('active', el.dataset.variant === state.settings.variant);
     });
+}
+
+function toggleModelDropdown(e) {
+    e?.stopPropagation();
+    _dropdownOpen = !_dropdownOpen;
+    const menu = document.getElementById('modelDropdownMenu');
+    if (_dropdownOpen) {
+        menu.classList.remove('hidden');
+    } else {
+        menu.classList.add('hidden');
+    }
+    updateModelChips();
+}
+
+function selectVariantDropdown(variant) { selectModelVariant(variant); }
+function selectModelVariant(variant) {
+    state.settings.variant = variant;
+    _dropdownOpen = false;
+    document.getElementById('modelDropdownMenu').classList.add('hidden');
+    updateModelChips();
+    updateSettingsCards();
+    saveSettingsQuiet();
+}
+
+// Close dropdown on outside click
+document.addEventListener('click', (e) => {
+    if (_dropdownOpen && !e.target.closest('.model-dropdown-wrap')) {
+        _dropdownOpen = false;
+        document.getElementById('modelDropdownMenu')?.classList.add('hidden');
+        updateModelChips();
+    }
+});
+
+// ═══ Theme Toggle ═══════════════════════════════════════════
+function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || 'dark';
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('sa_theme', next);
+    updateThemeButton();
+}
+
+function updateThemeButton() {
+    const btn = document.getElementById('themeToggleBtn');
+    if (!btn) return;
+    const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+    btn.innerHTML = theme === 'dark' 
+        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
+        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    btn.title = theme === 'dark' ? 'Светлая тема' : 'Тёмная тема';
+}
+
+// ═══ Scroll Down Button ════════════════════════════════════
+function initScrollWatcher() {
+    const container = document.getElementById('chatMessages');
+    const scrollBtn = document.getElementById('scrollDownBtn');
+    if (!container || !scrollBtn) return;
+
+    container.addEventListener('scroll', () => {
+        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+        scrollBtn.classList.toggle('hidden', isNearBottom);
+    });
+}
+
+function scrollToBottom() {
+    const container = document.getElementById('chatMessages');
+    if (container) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    }
 }
 
 function updateEnhancedToggle() {
@@ -1143,7 +1256,8 @@ function switchTab(tab) {
     document.getElementById('tabSettings').classList.toggle('hidden', tab !== 'settings');
     document.getElementById('tabAnalytics').classList.toggle('hidden', tab !== 'analytics');
     document.getElementById('tabAdmin').classList.toggle('hidden', tab !== 'admin');
-    document.getElementById('modelChipsBar').classList.toggle('hidden', tab !== 'chat');
+    const modelBar = document.getElementById('modelSelectorBar') || document.getElementById('modelChipsBar');
+    if (modelBar) modelBar.classList.toggle('hidden', tab !== 'chat');
 
     // Load data for tabs
     if (tab === 'analytics') loadAnalytics();
@@ -1169,7 +1283,13 @@ function filterChats() {
 function handleInputKey(event) {
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
-        sendMessage();
+        if (state.isStreaming) {
+            // Stop current and send new
+            stopGeneration();
+            setTimeout(() => sendMessage(), 200);
+        } else {
+            sendMessage();
+        }
     }
     // Shift+Enter — новая строка (поведение по умолчанию textarea)
 }
@@ -1242,15 +1362,17 @@ function showGenerationProgress(show) {
 
 function updateSendButton() {
     const btn = document.getElementById('sendBtn');
-    btn.disabled = state.isStreaming;
+    btn.disabled = false; // Never disable — allow stop or new send
     if (state.isStreaming) {
         btn.classList.add('generating');
         btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
         btn.title = 'Остановить';
+        btn.onclick = stopGeneration;
     } else {
         btn.classList.remove('generating');
         btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>';
         btn.title = 'Отправить';
+        btn.onclick = sendMessage;
     }
 }
 
@@ -1411,8 +1533,16 @@ function toast(message, type = 'info') {
 
 // ═══ Init ═══════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
+    // Init theme from localStorage
+    const savedTheme = localStorage.getItem('sa_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    updateThemeButton();
+
     // Init login canvas particles
     initLoginCanvas();
+
+    // Init scroll watcher
+    initScrollWatcher();
 
     if (state.token && state.user) {
         // Verify token is still valid
