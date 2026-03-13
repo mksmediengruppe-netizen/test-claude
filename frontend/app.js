@@ -45,17 +45,31 @@ async function api(path, options = {}) {
     return resp.json();
 }
 
-// ═══ Auth ════════════════════════════════════════════════════
+// ═══ Auth ════════════════════════════════════════════════════════
 async function doLogin() {
     const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
     const errorEl = document.getElementById('loginError');
+    const btn = document.getElementById('loginBtn');
+    const btnText = btn.querySelector('.login-btn-text');
+    const btnLoader = btn.querySelector('.login-btn-loader');
+
+    errorEl.style.display = 'none';
 
     if (!email || !password) {
         errorEl.textContent = 'Введите email и пароль';
         errorEl.style.display = 'block';
+        // Shake animation
+        errorEl.style.animation = 'none';
+        errorEl.offsetHeight;
+        errorEl.style.animation = 'fadeInUp 0.3s ease';
         return;
     }
+
+    // Show loading state
+    btn.disabled = true;
+    if (btnText) btnText.textContent = 'Вход...';
+    if (btnLoader) btnLoader.classList.remove('hidden');
 
     try {
         const data = await api('/auth/login', {
@@ -71,13 +85,94 @@ async function doLogin() {
 
         showApp();
         loadChats();
-        toast('Добро пожаловать!', 'success');
+        toast('Добро пожаловать, ' + (data.user.name || 'User') + '!', 'success');
     } catch (e) {
-        errorEl.textContent = e.message || 'Ошибка входа';
+        errorEl.textContent = e.message || 'Неверный email или пароль';
         errorEl.style.display = 'block';
+        errorEl.style.animation = 'none';
+        errorEl.offsetHeight;
+        errorEl.style.animation = 'fadeInUp 0.3s ease';
+        // Clear invalid token
+        localStorage.removeItem('sa_token');
+        localStorage.removeItem('sa_user');
+    } finally {
+        btn.disabled = false;
+        if (btnText) btnText.textContent = 'Войти в систему';
+        if (btnLoader) btnLoader.classList.add('hidden');
     }
 }
 
+function togglePassword() {
+    const inp = document.getElementById('loginPassword');
+    const icon = document.getElementById('eyeIcon');
+    if (inp.type === 'password') {
+        inp.type = 'text';
+        icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+    } else {
+        inp.type = 'password';
+        icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+    }
+}
+
+// Particle canvas for login background
+function initLoginCanvas() {
+    const canvas = document.getElementById('loginCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let w = canvas.width = window.innerWidth;
+    let h = canvas.height = window.innerHeight;
+    const particles = [];
+    const count = 60;
+    
+    for (let i = 0; i < count; i++) {
+        particles.push({
+            x: Math.random() * w,
+            y: Math.random() * h,
+            r: Math.random() * 2 + 0.5,
+            dx: (Math.random() - 0.5) * 0.5,
+            dy: (Math.random() - 0.5) * 0.5,
+            opacity: Math.random() * 0.5 + 0.2
+        });
+    }
+    
+    function draw() {
+        ctx.clearRect(0, 0, w, h);
+        particles.forEach((p, i) => {
+            p.x += p.dx;
+            p.y += p.dy;
+            if (p.x < 0) p.x = w;
+            if (p.x > w) p.x = 0;
+            if (p.y < 0) p.y = h;
+            if (p.y > h) p.y = 0;
+            
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(129, 140, 248, ${p.opacity})`;
+            ctx.fill();
+            
+            // Draw connections
+            for (let j = i + 1; j < particles.length; j++) {
+                const p2 = particles[j];
+                const dist = Math.hypot(p.x - p2.x, p.y - p2.y);
+                if (dist < 120) {
+                    ctx.beginPath();
+                    ctx.moveTo(p.x, p.y);
+                    ctx.lineTo(p2.x, p2.y);
+                    ctx.strokeStyle = `rgba(99, 102, 241, ${0.1 * (1 - dist / 120)})`;
+                    ctx.lineWidth = 0.5;
+                    ctx.stroke();
+                }
+            }
+        });
+        requestAnimationFrame(draw);
+    }
+    draw();
+    
+    window.addEventListener('resize', () => {
+        w = canvas.width = window.innerWidth;
+        h = canvas.height = window.innerHeight;
+    });
+}
 function doLogout() {
     api('/auth/logout', { method: 'POST' }).catch(() => {});
     state.token = '';
@@ -259,6 +354,7 @@ async function sendMessage() {
     const chatId = state.currentChat.id;
     state.isStreaming = true;
     updateSendButton();
+    showGenerationProgress(true);
 
     // Add user message to UI
     const container = document.getElementById('chatMessages');
@@ -295,9 +391,53 @@ async function sendMessage() {
     input.value = '';
     autoResize(input);
 
-    // Stream response
+    // Stream response with typing effect
     let fullContent = '';
+    let displayedContent = '';
     let currentAgent = '';
+    let typingQueue = [];
+    let isTyping = false;
+    const TYPING_SPEED = 8; // ms per character — fast but smooth
+
+    function processTypingQueue() {
+        if (isTyping || typingQueue.length === 0) return;
+        isTyping = true;
+
+        const chunk = typingQueue.shift();
+        let charIdx = 0;
+
+        function typeNextChar() {
+            // Type multiple chars per frame for speed
+            const charsPerFrame = Math.max(1, Math.ceil(chunk.length / 60));
+            for (let i = 0; i < charsPerFrame && charIdx < chunk.length; i++) {
+                displayedContent += chunk[charIdx];
+                charIdx++;
+            }
+
+            const contentEl = document.getElementById(`${assistantId}-content`);
+            if (contentEl) {
+                contentEl.innerHTML = renderMarkdown(displayedContent) + '<span class="typing-cursor"></span>';
+                container.scrollTop = container.scrollHeight;
+            }
+
+            if (charIdx < chunk.length) {
+                requestAnimationFrame(typeNextChar);
+            } else {
+                isTyping = false;
+                // Remove cursor if no more in queue
+                if (typingQueue.length === 0) {
+                    const el = document.getElementById(`${assistantId}-content`);
+                    if (el) {
+                        el.innerHTML = renderMarkdown(displayedContent);
+                        container.scrollTop = container.scrollHeight;
+                    }
+                }
+                processTypingQueue();
+            }
+        }
+
+        requestAnimationFrame(typeNextChar);
+    }
 
     try {
         const resp = await fetch(`${API}/chats/${chatId}/send`, {
@@ -347,12 +487,21 @@ async function sendMessage() {
 
                     if (event.type === 'content') {
                         fullContent += event.text;
-                        const contentEl = document.getElementById(`${assistantId}-content`);
-                        contentEl.innerHTML = renderMarkdown(fullContent);
-                        container.scrollTop = container.scrollHeight;
+                        typingQueue.push(event.text);
+                        processTypingQueue();
                     }
 
                     if (event.type === 'done') {
+                        // Flush remaining typing
+                        displayedContent = fullContent;
+                        typingQueue = [];
+                        isTyping = false;
+                        const contentEl = document.getElementById(`${assistantId}-content`);
+                        if (contentEl) {
+                            contentEl.innerHTML = renderMarkdown(fullContent);
+                            container.scrollTop = container.scrollHeight;
+                        }
+
                         const metaEl = document.getElementById(`${assistantId}-meta`);
                         const variantEmoji = state.settings.variant === 'original' ? '🔴' : state.settings.variant === 'budget' ? '🔵' : '🟢';
                         metaEl.innerHTML = `
@@ -382,10 +531,15 @@ async function sendMessage() {
     } catch (e) {
         const contentEl = document.getElementById(`${assistantId}-content`);
         contentEl.innerHTML = `<span style="color:var(--accent-red)">❌ Ошибка: ${e.message}</span>`;
+        showGenerationProgress(false);
     }
 
     state.isStreaming = false;
     updateSendButton();
+    showGenerationProgress(false);
+    // Clear attached files after send
+    state._attachedFiles = [];
+    renderAttachedFiles();
     loadChats(); // Refresh chat list
 }
 
@@ -399,6 +553,9 @@ function triggerFileUpload() {
     document.getElementById('fileInput').click();
 }
 
+// Attached files state
+state._attachedFiles = [];
+
 async function handleFileUpload(input) {
     const files = input.files;
     if (!files.length) return;
@@ -406,9 +563,15 @@ async function handleFileUpload(input) {
     const formData = new FormData();
     for (const f of files) {
         formData.append('file', f);
+        // Add to attached files for preview
+        state._attachedFiles.push({
+            name: f.name,
+            size: f.size,
+            type: f.type
+        });
     }
 
-    toast('Загрузка файлов...', 'info');
+    renderAttachedFiles();
 
     try {
         const resp = await fetch(`${API}/upload`, {
@@ -420,13 +583,65 @@ async function handleFileUpload(input) {
         const data = await resp.json();
         if (data.content) {
             state._pendingFileContent = data.content;
-            toast(`Загружено ${data.file_count} файл(ов). Напишите задачу.`, 'success');
+            toast(`Загружено ${data.file_count} файл(ов)`, 'success');
         }
     } catch (e) {
         toast('Ошибка загрузки: ' + e.message, 'error');
+        // Remove failed files from preview
+        state._attachedFiles = [];
+        renderAttachedFiles();
     }
 
     input.value = '';
+}
+
+function renderAttachedFiles() {
+    const container = document.getElementById('attachedFiles');
+    if (!container) return;
+
+    if (state._attachedFiles.length === 0) {
+        container.classList.add('hidden');
+        container.innerHTML = '';
+        return;
+    }
+
+    container.classList.remove('hidden');
+    container.innerHTML = state._attachedFiles.map((f, i) => {
+        const icon = getFileIcon(f.name);
+        const size = formatFileSize(f.size);
+        return `<div class="attached-file">
+            <span class="file-icon">${icon}</span>
+            <span class="file-name" title="${f.name}">${f.name}</span>
+            <span class="file-size">${size}</span>
+            <button class="file-remove" onclick="removeAttachedFile(${i})" title="Удалить">×</button>
+        </div>`;
+    }).join('');
+}
+
+function removeAttachedFile(index) {
+    state._attachedFiles.splice(index, 1);
+    if (state._attachedFiles.length === 0) {
+        state._pendingFileContent = '';
+    }
+    renderAttachedFiles();
+}
+
+function getFileIcon(name) {
+    const ext = name.split('.').pop().toLowerCase();
+    const icons = {
+        'py': '🐍', 'js': '🟨', 'ts': '🟦', 'html': '🌐', 'css': '🎨',
+        'json': '📋', 'md': '📝', 'txt': '📄', 'zip': '📦', 'tar': '📦',
+        'gz': '📦', 'pdf': '📕', 'doc': '📘', 'docx': '📘',
+        'png': '🖼️', 'jpg': '🖼️', 'jpeg': '🖼️', 'gif': '🖼️', 'webp': '🖼️',
+        'sql': '🗃️', 'yaml': '⚙️', 'yml': '⚙️', 'toml': '⚙️'
+    };
+    return icons[ext] || '📄';
+}
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
 // ═══ Settings ═══════════════════════════════════════════════
@@ -613,12 +828,14 @@ function renderAnalytics(data) {
 // ═══ Admin Panel ════════════════════════════════════════════
 async function loadAdmin() {
     try {
-        const [statsData, usersData] = await Promise.all([
+        const [statsData, usersData, chatsData] = await Promise.all([
             api('/admin/stats'),
-            api('/admin/users')
+            api('/admin/users'),
+            api('/admin/chats')
         ]);
         renderAdminStats(statsData);
         renderUsersTable(usersData.users);
+        renderAdminChats(chatsData.chats);
     } catch (e) {
         document.getElementById('usersTable').innerHTML =
             '<div style="padding:20px;text-align:center;color:var(--text-muted)">Нет доступа к админ-панели</div>';
@@ -676,6 +893,92 @@ function renderUsersTable(users) {
             </tbody>
         </table>
     `;
+}
+
+function renderAdminChats(chats) {
+    const container = document.getElementById('adminChatsTable');
+    if (!container) return;
+    if (!chats || chats.length === 0) {
+        container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted)">Нет чатов</div>';
+        return;
+    }
+
+    container.innerHTML = `
+        <table class="admin-table">
+            <thead><tr>
+                <th>Пользователь</th><th>Чат</th><th>Вариант</th><th>Сообщений</th><th>Стоимость</th><th>Дата</th><th>Действия</th>
+            </tr></thead>
+            <tbody>
+                ${chats.map(c => {
+                    const variantBadge = c.variant === 'original' ? '🔴' : c.variant === 'budget' ? '🔵' : '🟢';
+                    const date = c.updated_at ? new Date(c.updated_at).toLocaleString('ru') : '';
+                    return `<tr>
+                        <td><span style="font-size:12px">${escapeHtml(c.user_email)}</span></td>
+                        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</td>
+                        <td>${variantBadge} ${c.variant || ''}</td>
+                        <td>${c.message_count}</td>
+                        <td>$${(c.total_cost || 0).toFixed(4)}</td>
+                        <td style="font-size:11px">${date}</td>
+                        <td>
+                            <button class="admin-btn" onclick="viewAdminChat('${c.id}')">👁 Смотреть</button>
+                            <button class="admin-btn danger" onclick="deleteAdminChat('${c.id}')">🗑 Удалить</button>
+                        </td>
+                    </tr>`;
+                }).join('')}
+            </tbody>
+        </table>
+    `;
+}
+
+async function viewAdminChat(chatId) {
+    try {
+        const data = await api(`/admin/chats/${chatId}`);
+        const chat = data.chat;
+        const messages = chat.messages || [];
+
+        let html = `<div class="admin-chat-viewer">
+            <div class="admin-chat-header">
+                <h3>💬 ${escapeHtml(chat.title || 'Chat')}</h3>
+                <div style="font-size:12px;color:var(--text-muted)">
+                    👤 ${escapeHtml(chat.user_email || '')} &bull; ${chat.variant || ''} &bull; $${(chat.total_cost || 0).toFixed(4)}
+                </div>
+                <button class="admin-btn" onclick="closeAdminChatViewer()" style="margin-top:8px">← Назад</button>
+            </div>
+            <div class="admin-chat-messages">`;
+
+        for (const msg of messages) {
+            const isUser = msg.role === 'user';
+            const time = msg.timestamp ? new Date(msg.timestamp).toLocaleString('ru') : '';
+            html += `<div class="admin-msg ${isUser ? 'admin-msg-user' : 'admin-msg-assistant'}">
+                <div class="admin-msg-role">${isUser ? '👤 Пользователь' : '🤖 AI'} <span style="color:var(--text-muted);font-size:11px">${time}</span></div>
+                <div class="admin-msg-content">${isUser ? escapeHtml(msg.content || '') : renderMarkdown(msg.content || '')}</div>
+                ${msg.cost ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">💰 $${msg.cost.toFixed(4)} &bull; ${msg.model || ''}</div>` : ''}
+            </div>`;
+        }
+
+        html += '</div></div>';
+
+        // Show in admin panel
+        const container = document.getElementById('adminChatsTable');
+        container.innerHTML = html;
+    } catch (e) {
+        toast('Ошибка загрузки чата: ' + e.message, 'error');
+    }
+}
+
+function closeAdminChatViewer() {
+    loadAdmin();
+}
+
+async function deleteAdminChat(chatId) {
+    if (!confirm('Удалить этот чат?')) return;
+    try {
+        await api(`/admin/chats/${chatId}`, { method: 'DELETE' });
+        loadAdmin();
+        toast('Чат удалён', 'success');
+    } catch (e) {
+        toast('Ошибка: ' + e.message, 'error');
+    }
 }
 
 async function toggleUser(userId) {
@@ -864,10 +1167,11 @@ function filterChats() {
 }
 
 function handleInputKey(event) {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+    if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         sendMessage();
     }
+    // Shift+Enter — новая строка (поведение по умолчанию textarea)
 }
 
 function autoResize(textarea) {
@@ -875,10 +1179,79 @@ function autoResize(textarea) {
     textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
 }
 
+// ═══ Generation Progress ════════════════════════════════════════════
+let _progressInterval = null;
+let _progressPercent = 0;
+
+const PROGRESS_STAGES = [
+    { pct: 5, text: 'Подключение к AI...' },
+    { pct: 15, text: 'Анализ запроса...' },
+    { pct: 30, text: 'Генерация ответа...' },
+    { pct: 50, text: 'Написание кода...' },
+    { pct: 70, text: 'Проверка качества...' },
+    { pct: 85, text: 'Форматирование...' },
+    { pct: 95, text: 'Завершение...' }
+];
+
+const PROGRESS_STAGES_ENHANCED = [
+    { pct: 5, text: '🏗️ Architect — планирование архитектуры...' },
+    { pct: 20, text: '🏗️ Architect — анализ задачи...' },
+    { pct: 35, text: '💻 Coder — написание кода...' },
+    { pct: 55, text: '💻 Coder — генерация решения...' },
+    { pct: 70, text: '🔍 Reviewer — проверка кода...' },
+    { pct: 85, text: '✅ QA — финальная проверка...' },
+    { pct: 95, text: '✅ QA — завершение...' }
+];
+
+function showGenerationProgress(show) {
+    const el = document.getElementById('generationProgress');
+    const fill = document.getElementById('progressBarFill');
+    const text = document.getElementById('progressText');
+    if (!el) return;
+
+    if (show) {
+        el.classList.remove('hidden');
+        _progressPercent = 0;
+        fill.style.width = '0%';
+        text.textContent = 'Инициализация...';
+
+        const stages = state.settings.enhanced_mode ? PROGRESS_STAGES_ENHANCED : PROGRESS_STAGES;
+        let stageIdx = 0;
+
+        _progressInterval = setInterval(() => {
+            if (stageIdx < stages.length) {
+                _progressPercent = stages[stageIdx].pct;
+                fill.style.width = _progressPercent + '%';
+                text.textContent = stages[stageIdx].text;
+                stageIdx++;
+            }
+        }, state.settings.enhanced_mode ? 3000 : 2000);
+    } else {
+        if (_progressInterval) {
+            clearInterval(_progressInterval);
+            _progressInterval = null;
+        }
+        fill.style.width = '100%';
+        text.textContent = 'Готово!';
+        setTimeout(() => {
+            el.classList.add('hidden');
+            fill.style.width = '0%';
+        }, 800);
+    }
+}
+
 function updateSendButton() {
     const btn = document.getElementById('sendBtn');
     btn.disabled = state.isStreaming;
-    btn.innerHTML = state.isStreaming ? '⏳ Генерация...' : '▶ Отправить';
+    if (state.isStreaming) {
+        btn.classList.add('generating');
+        btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+        btn.title = 'Остановить';
+    } else {
+        btn.classList.remove('generating');
+        btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>';
+        btn.title = 'Отправить';
+    }
 }
 
 function updateUI() {
@@ -1038,15 +1411,24 @@ function toast(message, type = 'info') {
 
 // ═══ Init ═══════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
+    // Init login canvas particles
+    initLoginCanvas();
+
     if (state.token && state.user) {
-        showApp();
-        loadChats();
+        // Verify token is still valid
+        api('/auth/me').then(data => {
+            state.user = data.user || state.user;
+            showApp();
+            loadChats();
+        }).catch(() => {
+            // Token expired, show login
+            state.token = '';
+            state.user = null;
+            localStorage.removeItem('sa_token');
+            localStorage.removeItem('sa_user');
+            showLogin();
+        });
     } else {
         showLogin();
     }
-
-    // Enter key on login
-    document.getElementById('loginPassword').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') doLogin();
-    });
 });

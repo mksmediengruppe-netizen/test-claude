@@ -26,10 +26,7 @@ app.secret_key = secrets.token_hex(32)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max
 
 # ── Configuration ──────────────────────────────────────────────
-OPENROUTER_API_KEY = os.environ.get(
-    "OPENROUTER_API_KEY",
-    "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",
-)
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 DATA_DIR = os.environ.get("DATA_DIR", "/var/www/super-agent/backend/data")
@@ -1222,6 +1219,61 @@ def admin_user_chats(user_id):
     user_chats = [c for c in db["chats"].values() if c.get("user_id") == user_id]
     user_chats.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
     return jsonify({"chats": user_chats})
+
+
+@app.route("/api/admin/chats", methods=["GET"])
+@require_auth
+@require_admin
+def admin_all_chats():
+    """View ALL chats from all users with full messages (admin only)."""
+    db = db_read()
+    all_chats = []
+    for chat_id, chat in db["chats"].items():
+        user = db["users"].get(chat.get("user_id", ""), {})
+        all_chats.append({
+            "id": chat_id,
+            "title": chat.get("title", "Untitled"),
+            "user_id": chat.get("user_id", ""),
+            "user_email": user.get("email", "unknown"),
+            "user_name": user.get("name", "unknown"),
+            "variant": chat.get("variant", ""),
+            "model": chat.get("model", ""),
+            "total_cost": chat.get("total_cost", 0),
+            "messages": chat.get("messages", []),
+            "message_count": len(chat.get("messages", [])),
+            "created_at": chat.get("created_at", ""),
+            "updated_at": chat.get("updated_at", "")
+        })
+    all_chats.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+    return jsonify({"chats": all_chats})
+
+
+@app.route("/api/admin/chats/<chat_id>", methods=["GET"])
+@require_auth
+@require_admin
+def admin_get_chat(chat_id):
+    """View a specific chat with full messages (admin only)."""
+    db = db_read()
+    chat = db["chats"].get(chat_id)
+    if not chat:
+        return jsonify({"error": "Chat not found"}), 404
+    user = db["users"].get(chat.get("user_id", ""), {})
+    chat["user_email"] = user.get("email", "unknown")
+    chat["user_name"] = user.get("name", "unknown")
+    return jsonify({"chat": chat})
+
+
+@app.route("/api/admin/chats/<chat_id>", methods=["DELETE"])
+@require_auth
+@require_admin
+def admin_delete_chat(chat_id):
+    """Delete a chat (admin only)."""
+    db = db_read()
+    if chat_id in db["chats"]:
+        del db["chats"][chat_id]
+        db_write(db)
+        return jsonify({"ok": True})
+    return jsonify({"error": "Chat not found"}), 404
 
 
 @app.route("/api/admin/stats", methods=["GET"])
