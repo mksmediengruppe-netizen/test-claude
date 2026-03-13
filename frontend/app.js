@@ -1758,6 +1758,19 @@ function toggleSidebar() {
     } else {
         sidebar.classList.toggle('collapsed', !state.sidebarOpen);
     }
+
+    // Update collapse button icon
+    const collapseBtn = sidebar.querySelector('.sidebar-collapse-btn');
+    if (collapseBtn) {
+        collapseBtn.innerHTML = state.sidebarOpen ? '\u25C0' : '\u25B6';
+        collapseBtn.title = state.sidebarOpen ? '\u0421\u0432\u0435\u0440\u043d\u0443\u0442\u044c \u043c\u0435\u043d\u044e' : '\u0420\u0430\u0437\u0432\u0435\u0440\u043d\u0443\u0442\u044c \u043c\u0435\u043d\u044e';
+    }
+
+    // Update topbar toggle icon
+    const topbarToggle = document.querySelector('.topbar-toggle');
+    if (topbarToggle) {
+        topbarToggle.innerHTML = state.sidebarOpen ? '\u2630' : '\u2630';
+    }
 }
 
 function filterChats() {
@@ -2227,20 +2240,23 @@ document.addEventListener('DOMContentLoaded', () => {   // Init theme from local
     document.documentElement.setAttribute('data-theme', savedTheme);
     updateThemeButton();
 
-    // Init login canvas particles
+    // Init login canvas particles (only if login visible)
     initLoginCanvas();
 
     // Init scroll watcher
     initScrollWatcher();
 
     if (state.token && state.user) {
-        // Verify token is still valid
+        // Token exists — show app immediately (no flash)
+        showApp();
+        loadChats();
+
+        // Verify token in background
         api('/auth/me').then(data => {
             state.user = data.user || state.user;
-            showApp();
-            loadChats();
+            localStorage.setItem('sa_user', JSON.stringify(state.user));
         }).catch(() => {
-            // Token expired, show login
+            // Token expired — redirect to login
             state.token = '';
             state.user = null;
             localStorage.removeItem('sa_token');

@@ -15,7 +15,7 @@
 <body>
 
 <!-- ═══ Login Screen ═══ -->
-<div id="loginScreen" class="login-screen">
+<div id="loginScreen" class="login-screen" style="display:none">
     <canvas id="loginCanvas" class="login-canvas"></canvas>
     <div class="login-orb login-orb-1"></div>
     <div class="login-orb login-orb-2"></div>
@@ -91,16 +91,36 @@
 </div>
 
 <!-- ═══ Main App ═══ -->
-<div id="appContainer" class="app-container hidden">
+<div id="appContainer" class="app-container hidden" style="display:none">
+<script>
+// Instant show: no login flash if token exists
+(function(){
+    var t = localStorage.getItem('sa_token');
+    var ls = document.getElementById('loginScreen');
+    var ac = document.getElementById('appContainer');
+    if (t) {
+        ls.style.display = 'none';
+        ls.classList.add('hidden');
+        ac.style.display = '';
+        ac.classList.remove('hidden');
+    } else {
+        ls.style.display = '';
+        ls.classList.remove('hidden');
+        ac.style.display = 'none';
+        ac.classList.add('hidden');
+    }
+})();
+</script>
 
     <!-- ── Sidebar ── -->
     <aside id="sidebar" class="sidebar">
         <div class="sidebar-header">
             <div class="sidebar-logo">SA</div>
-            <div>
+            <div style="flex:1">
                 <div class="sidebar-title">Super Agent</div>
                 <div class="sidebar-version">v5.0 LangGraph</div>
             </div>
+            <button class="sidebar-collapse-btn" onclick="toggleSidebar()" title="Свернуть меню">◀</button>
         </div>
 
         <div class="sidebar-search">
