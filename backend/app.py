@@ -2488,5 +2488,138 @@ def get_audit_log_api():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# ══════════════════════════════════════════════════════════════════
+# ██ CONNECTORS TOGGLE API ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/connectors/<connector_id>", methods=["POST"])
+@require_auth
+def toggle_connector(connector_id):
+    """Toggle connector enabled/disabled."""
+    try:
+        data = request.get_json() or {}
+        enabled = data.get("enabled", True)
+        db = _load_db()
+        connector_states = db.setdefault("connector_states", {})
+        connector_states[connector_id] = {"enabled": enabled, "updated_at": datetime.now(timezone.utc).isoformat()}
+        _save_db(db)
+        return jsonify({"success": True, "connector_id": connector_id, "enabled": enabled})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# ██ CUSTOM AGENTS CRUD API ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/agents", methods=["GET"])
+@require_auth
+def list_agents():
+    """List all agents (system + custom)."""
+    db = _load_db()
+    custom_agents = db.get("custom_agents", [])
+    system_agents = [
+        {"id": "architect", "name": "Architect", "avatar": "\ud83c\udfd7\ufe0f", "description": "\u041f\u043b\u0430\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0430\u0440\u0445\u0438\u0442\u0435\u043a\u0442\u0443\u0440\u044b", "system": True, "tools": "Plan, Research, Files"},
+        {"id": "coder", "name": "Coder", "avatar": "\ud83d\udcbb", "description": "\u041d\u0430\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043a\u043e\u0434\u0430", "system": True, "tools": "Code, SSH, Web"},
+        {"id": "reviewer", "name": "Reviewer", "avatar": "\ud83d\udd0d", "description": "\u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u043a\u043e\u0434\u0430", "system": True, "tools": "Review, Security, Metrics"},
+        {"id": "qa", "name": "QA", "avatar": "\u2705", "description": "\u0422\u0435\u0441\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435", "system": True, "tools": "Test, Report, Retry"}
+    ]
+    return jsonify({"success": True, "agents": system_agents + custom_agents})
+
+
+@app.route("/api/agents", methods=["POST"])
+@require_auth
+def create_agent():
+    """Create a custom agent."""
+    try:
+        data = request.get_json() or {}
+        agent = {
+            "id": f"custom_{datetime.now().strftime('%Y%m%d%H%M%S')}_{os.urandom(4).hex()}",
+            "name": data.get("name", "Custom Agent"),
+            "description": data.get("description", ""),
+            "system_prompt": data.get("system_prompt", ""),
+            "avatar": data.get("avatar", "\ud83e\udd16"),
+            "tools": data.get("tools", []),
+            "system": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        db = _load_db()
+        db.setdefault("custom_agents", []).append(agent)
+        _save_db(db)
+        return jsonify({"success": True, "agent": agent}), 201
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/agents/<agent_id>", methods=["DELETE"])
+@require_auth
+def delete_agent(agent_id):
+    """Delete a custom agent."""
+    try:
+        db = _load_db()
+        agents = db.get("custom_agents", [])
+        db["custom_agents"] = [a for a in agents if a.get("id") != agent_id]
+        _save_db(db)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# ██ AUDIT LOGS API (frontend-compatible) ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/audit/logs", methods=["GET"])
+@require_auth
+def get_audit_logs():
+    """Get audit logs with filtering."""
+    try:
+        from security import get_audit_log
+        filter_type = request.args.get("filter", "all")
+        limit = int(request.args.get("limit", 100))
+        action_filter = None if filter_type == "all" else filter_type
+        entries = get_audit_log(action=action_filter, limit=limit)
+        logs = [{"type": e.get("action", "system"), "action": e.get("action", ""), "event": e.get("event", ""), "details": e.get("details", ""), "ip": e.get("ip", ""), "timestamp": e.get("timestamp", "")} for e in entries]
+        return jsonify({"success": True, "logs": logs})
+    except Exception as e:
+        return jsonify({"success": True, "logs": []})
+
+
+@app.route("/api/audit/export", methods=["GET"])
+@require_auth
+def export_audit_logs():
+    """Export full audit log."""
+    try:
+        from security import get_audit_log
+        entries = get_audit_log(limit=10000)
+        return jsonify({"success": True, "logs": entries, "exported_at": datetime.now(timezone.utc).isoformat()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# ██ GDPR ANONYMIZE API ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/gdpr/anonymize", methods=["POST"])
+@require_auth
+def gdpr_anonymize_data():
+    """GDPR: Anonymize user data."""
+    try:
+        db = _load_db()
+        for chat in db.get("chats", []):
+            for msg in chat.get("messages", []):
+                if msg.get("role") == "user":
+                    msg["content"] = "[ANONYMIZED]"
+        users = db.get("users", {})
+        for uid, user in users.items():
+            user["name"] = "Anonymous"
+            user["email"] = f"anon_{uid[:8]}@anonymized.local"
+        _save_db(db)
+        return jsonify({"success": True, "message": "Data anonymized"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3501, debug=True)

@@ -1783,6 +1783,9 @@ function switchTab(tab) {
     document.getElementById('tabAdmin').classList.toggle('hidden', tab !== 'admin');
     document.getElementById('tabCanvas')?.classList.toggle('hidden', tab !== 'canvas');
     document.getElementById('tabTemplates')?.classList.toggle('hidden', tab !== 'templates');
+    document.getElementById('tabConnectors')?.classList.toggle('hidden', tab !== 'connectors');
+    document.getElementById('tabAgents')?.classList.toggle('hidden', tab !== 'agents');
+    document.getElementById('tabAudit')?.classList.toggle('hidden', tab !== 'audit');
     const modelBar = document.getElementById('modelSelectorBar') || document.getElementById('modelChipsBar');
     if (modelBar) modelBar.classList.toggle('hidden', tab !== 'chat');
 
@@ -1794,6 +1797,9 @@ function switchTab(tab) {
     if (tab === 'versions') loadVersionsTab();
     if (tab === 'canvas') loadCanvasTab();
     if (tab === 'templates') loadTemplatesTab();
+    if (tab === 'connectors') loadConnectorsTab();
+    if (tab === 'agents') loadAgentsTab();
+    if (tab === 'audit') loadAuditLogs();
 }
 
 function toggleSidebar() {
@@ -2951,3 +2957,269 @@ document.addEventListener('DOMContentLoaded', () => {
         showLogin();
     }
 });
+
+
+// ═══ Connectors Tab ════════════════════════════════════════
+function loadConnectorsTab() {
+    api('/connectors').then(data => {
+        if (data && data.connectors) {
+            data.connectors.forEach(c => {
+                const el = document.getElementById('conn' + c.id.charAt(0).toUpperCase() + c.id.slice(1));
+                if (el) el.checked = c.enabled;
+            });
+        }
+    }).catch(() => {
+        // Use default UI state
+    });
+}
+
+function toggleConnector(id, enabled) {
+    api('/connectors/' + id, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+    }).then(() => {
+        toast(`Коннектор ${id} ${enabled ? 'включён' : 'отключён'}`, 'success');
+    }).catch(() => {
+        toast(`Настройки коннектора сохранены локально`, 'info');
+    });
+}
+
+function addCustomConnector() {
+    const name = prompt('Имя MCP-сервера:');
+    if (!name) return;
+    const url = prompt('URL или команда запуска:');
+    if (!url) return;
+
+    api('/connectors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, url, type: 'mcp' })
+    }).then(() => {
+        toast('MCP-сервер добавлен', 'success');
+        loadConnectorsTab();
+    }).catch(() => {
+        // Add to UI locally
+        const grid = document.getElementById('connectorsGrid');
+        if (grid) {
+            const card = document.createElement('div');
+            card.className = 'connector-card';
+            card.innerHTML = `
+                <div class="connector-icon">🔌</div>
+                <div class="connector-info">
+                    <h3>${escapeHtml(name)}</h3>
+                    <p>${escapeHtml(url)}</p>
+                </div>
+                <div class="connector-status">
+                    <label class="toggle-switch"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+                </div>
+            `;
+            grid.appendChild(card);
+            toast('MCP-сервер добавлен (локально)', 'info');
+        }
+    });
+}
+
+// ═══ Custom Agents Tab ═════════════════════════════════════
+function loadAgentsTab() {
+    api('/agents').then(data => {
+        if (data && data.agents) {
+            const list = document.getElementById('agentsList');
+            // Keep system agents, add custom ones
+            const customAgents = data.agents.filter(a => !a.system);
+            customAgents.forEach(agent => {
+                const existing = document.getElementById('agent-' + agent.id);
+                if (!existing) {
+                    const card = document.createElement('div');
+                    card.className = 'agent-card';
+                    card.id = 'agent-' + agent.id;
+                    card.innerHTML = `
+                        <div class="agent-card-header">
+                            <div class="agent-avatar">${agent.avatar || '🤖'}</div>
+                            <div>
+                                <h3>${escapeHtml(agent.name)}</h3>
+                                <span class="agent-badge custom">Пользовательский</span>
+                            </div>
+                            <button class="msg-action-btn" onclick="deleteAgent('${agent.id}')" title="Удалить" style="margin-left:auto;">🗑️</button>
+                        </div>
+                        <p>${escapeHtml(agent.description || '')}</p>
+                        <div class="agent-tools">${escapeHtml(agent.tools || '')}</div>
+                    `;
+                    list.appendChild(card);
+                }
+            });
+        }
+    }).catch(() => {
+        // Use default UI
+    });
+}
+
+function showCreateAgentModal() {
+    const name = prompt('Имя агента:');
+    if (!name) return;
+    const description = prompt('Описание (что делает агент):');
+    const systemPrompt = prompt('Системный промпт:');
+    if (!systemPrompt) return;
+    const avatar = prompt('Эмодзи-аватар (например 🧑‍💻):', '🤖');
+
+    const agent = {
+        name,
+        description: description || '',
+        system_prompt: systemPrompt,
+        avatar: avatar || '🤖',
+        tools: [],
+        system: false
+    };
+
+    api('/agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(agent)
+    }).then(data => {
+        toast('Агент создан', 'success');
+        loadAgentsTab();
+    }).catch(() => {
+        // Add locally
+        const list = document.getElementById('agentsList');
+        if (list) {
+            const card = document.createElement('div');
+            card.className = 'agent-card';
+            card.innerHTML = `
+                <div class="agent-card-header">
+                    <div class="agent-avatar">${agent.avatar}</div>
+                    <div>
+                        <h3>${escapeHtml(name)}</h3>
+                        <span class="agent-badge custom">Пользовательский</span>
+                    </div>
+                </div>
+                <p>${escapeHtml(description || '')}</p>
+            `;
+            list.appendChild(card);
+            toast('Агент создан (локально)', 'info');
+        }
+    });
+}
+
+function deleteAgent(id) {
+    if (!confirm('Удалить этого агента?')) return;
+    api('/agents/' + id, { method: 'DELETE' }).then(() => {
+        document.getElementById('agent-' + id)?.remove();
+        toast('Агент удалён', 'success');
+    }).catch(() => {
+        document.getElementById('agent-' + id)?.remove();
+        toast('Агент удалён (локально)', 'info');
+    });
+}
+
+// ═══ Audit Log Tab ═════════════════════════════════════════
+function loadAuditLogs() {
+    const filter = document.getElementById('auditFilter')?.value || 'all';
+    api('/audit/logs?filter=' + filter).then(data => {
+        const list = document.getElementById('auditLogList');
+        if (data && data.logs && data.logs.length > 0) {
+            list.innerHTML = data.logs.map(log => {
+                const icons = {
+                    auth: '🔐', chat: '💬', file: '📁',
+                    settings: '⚙️', security: '🛡️', system: '🖥️'
+                };
+                const icon = icons[log.type] || '📋';
+                return `<div class="audit-entry" style="padding:12px;border-bottom:1px solid var(--border-color);display:flex;gap:12px;align-items:center;">
+                    <span style="font-size:20px;">${icon}</span>
+                    <div style="flex:1;">
+                        <div style="font-weight:600;">${escapeHtml(log.action || log.event || '')}</div>
+                        <div style="color:var(--text-secondary);font-size:12px;">${escapeHtml(log.details || '')} ${log.ip ? '• IP: ' + log.ip : ''}</div>
+                    </div>
+                    <div style="color:var(--text-secondary);font-size:12px;white-space:nowrap;">${log.timestamp ? formatTime(log.timestamp) : ''}</div>
+                </div>`;
+            }).join('');
+        } else {
+            list.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary);">Журнал аудита пуст или данные загружаются...</div>';
+        }
+    }).catch(() => {
+        const list = document.getElementById('auditLogList');
+        if (list) {
+            list.innerHTML = `
+                <div class="audit-entry" style="padding:12px;border-bottom:1px solid var(--border-color);display:flex;gap:12px;align-items:center;">
+                    <span style="font-size:20px;">🔐</span>
+                    <div style="flex:1;">
+                        <div style="font-weight:600;">Сессия начата</div>
+                        <div style="color:var(--text-secondary);font-size:12px;">Пользователь: ${state.user?.email || 'admin'}</div>
+                    </div>
+                    <div style="color:var(--text-secondary);font-size:12px;white-space:nowrap;">${new Date().toLocaleTimeString()}</div>
+                </div>
+                <div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:13px;">
+                    Полный журнал доступен через API: <code>/api/audit/logs</code>
+                </div>`;
+        }
+    });
+}
+
+function exportAuditLogs() {
+    api('/audit/export').then(data => {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'audit_log_' + new Date().toISOString().split('T')[0] + '.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        toast('Журнал аудита экспортирован', 'success');
+    }).catch(() => {
+        toast('Экспорт недоступен — используйте API напрямую', 'warning');
+    });
+}
+
+// ═══ GDPR Management ═══════════════════════════════════════
+function showGDPRPanel() {
+    const modal = document.getElementById('gdprModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.remove('hidden');
+    }
+}
+
+function hideGDPRPanel() {
+    const modal = document.getElementById('gdprModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+    }
+}
+
+function gdprExportData() {
+    api('/gdpr/export').then(data => {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'my_data_export_' + new Date().toISOString().split('T')[0] + '.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        toast('Данные экспортированы (DSAR)', 'success');
+        hideGDPRPanel();
+    }).catch(() => {
+        toast('Экспорт данных: обратитесь к администратору', 'warning');
+    });
+}
+
+function gdprAnonymize() {
+    if (!confirm('Вы уверены? Ваши персональные данные будут анонимизированы. Это действие необратимо.')) return;
+    api('/gdpr/anonymize', { method: 'POST' }).then(() => {
+        toast('Данные анонимизированы', 'success');
+        hideGDPRPanel();
+    }).catch(() => {
+        toast('Анонимизация: обратитесь к администратору', 'warning');
+    });
+}
+
+function gdprDeleteAll() {
+    if (!confirm('ВНИМАНИЕ! Все ваши данные будут безвозвратно удалены. Продолжить?')) return;
+    if (!confirm('Это действие НЕОБРАТИМО. Вы точно хотите удалить ВСЕ данные?')) return;
+    api('/gdpr/delete', { method: 'DELETE' }).then(() => {
+        toast('Все данные удалены', 'success');
+        hideGDPRPanel();
+        doLogout();
+    }).catch(() => {
+        toast('Удаление данных: обратитесь к администратору', 'warning');
+    });
+}

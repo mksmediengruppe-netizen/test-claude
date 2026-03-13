@@ -139,7 +139,10 @@
             <button class="nav-item" data-tab="settings" onclick="switchTab('settings')"><span class="nav-icon">⚙️</span> Настройки</button>
             <button class="nav-item" data-tab="memory" onclick="switchTab('memory')"><span class="nav-icon">🧠</span> Память</button>
             <button class="nav-item" data-tab="versions" onclick="switchTab('versions')"><span class="nav-icon">📂</span> Версии</button>
+            <button class="nav-item" data-tab="connectors" onclick="switchTab('connectors')"><span class="nav-icon">🔗</span> Коннекторы</button>
+            <button class="nav-item" data-tab="agents" onclick="switchTab('agents')"><span class="nav-icon">🤖</span> Агенты</button>
             <button class="nav-item" data-tab="analytics" onclick="switchTab('analytics')"><span class="nav-icon">📊</span> Аналитика</button>
+            <button class="nav-item" data-tab="audit" onclick="switchTab('audit')"><span class="nav-icon">📜</span> Аудит</button>
             <button class="nav-item" data-tab="admin" onclick="switchTab('admin')"><span class="nav-icon">👤</span> Админ-панель</button>
         </div>
 
@@ -162,7 +165,10 @@
                 <button class="topbar-tab" data-tab="settings" onclick="switchTab('settings')">⚙️ Настройки</button>
                 <button class="topbar-tab" data-tab="memory" onclick="switchTab('memory')">🧠 Память</button>
                 <button class="topbar-tab" data-tab="versions" onclick="switchTab('versions')">📂 Версии</button>
+                <button class="topbar-tab" data-tab="connectors" onclick="switchTab('connectors')">🔗 Коннекторы</button>
+                <button class="topbar-tab" data-tab="agents" onclick="switchTab('agents')">🤖 Агенты</button>
                 <button class="topbar-tab" data-tab="analytics" onclick="switchTab('analytics')">📊 Аналитика</button>
+                <button class="topbar-tab" data-tab="audit" onclick="switchTab('audit')">📜 Аудит</button>
                 <button class="topbar-tab" data-tab="admin" onclick="switchTab('admin')">👤 Админ</button>
             </div>
 
@@ -557,6 +563,180 @@
             <div id="templatesList" class="templates-grid"></div>
         </div>
     </div>
+
+        <!-- ── Connectors Panel ── -->
+        <div id="tabConnectors" class="settings-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:8px;">🔗 Коннекторы (MCP)</h2>
+            <p style="color:var(--text-secondary);margin-bottom:20px;">Управление внешними подключениями и MCP-серверами</p>
+            <div class="connectors-grid" id="connectorsGrid">
+                <div class="connector-card">
+                    <div class="connector-icon">🐙</div>
+                    <div class="connector-info">
+                        <h3>GitHub</h3>
+                        <p>Интеграция с GitHub репозиториями</p>
+                    </div>
+                    <div class="connector-status">
+                        <label class="toggle-switch"><input type="checkbox" id="connGithub" onchange="toggleConnector('github', this.checked)"><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+                <div class="connector-card">
+                    <div class="connector-icon">💾</div>
+                    <div class="connector-info">
+                        <h3>SSH Серверы</h3>
+                        <p>Подключение к удалённым серверам по SSH</p>
+                    </div>
+                    <div class="connector-status">
+                        <label class="toggle-switch"><input type="checkbox" id="connSSH" checked onchange="toggleConnector('ssh', this.checked)"><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+                <div class="connector-card">
+                    <div class="connector-icon">🌐</div>
+                    <div class="connector-info">
+                        <h3>Web Scraping</h3>
+                        <p>Парсинг и анализ веб-страниц</p>
+                    </div>
+                    <div class="connector-status">
+                        <label class="toggle-switch"><input type="checkbox" id="connWeb" checked onchange="toggleConnector('web', this.checked)"><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+                <div class="connector-card">
+                    <div class="connector-icon">🗄️</div>
+                    <div class="connector-info">
+                        <h3>Qdrant Vector DB</h3>
+                        <p>Векторная база данных для памяти</p>
+                    </div>
+                    <div class="connector-status">
+                        <label class="toggle-switch"><input type="checkbox" id="connQdrant" onchange="toggleConnector('qdrant', this.checked)"><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+                <div class="connector-card">
+                    <div class="connector-icon">📧</div>
+                    <div class="connector-info">
+                        <h3>Email / SMTP</h3>
+                        <p>Отправка уведомлений по email</p>
+                    </div>
+                    <div class="connector-status">
+                        <label class="toggle-switch"><input type="checkbox" id="connEmail" onchange="toggleConnector('email', this.checked)"><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+                <div class="connector-card">
+                    <div class="connector-icon">📁</div>
+                    <div class="connector-info">
+                        <h3>S3 / Файловое хранилище</h3>
+                        <p>Внешнее хранилище файлов</p>
+                    </div>
+                    <div class="connector-status">
+                        <label class="toggle-switch"><input type="checkbox" id="connS3" onchange="toggleConnector('s3', this.checked)"><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top:20px;">
+                <button class="settings-save-btn" onclick="addCustomConnector()">➕ Добавить MCP-сервер</button>
+            </div>
+        </div>
+
+        <!-- ── Custom Agents Panel ── -->
+        <div id="tabAgents" class="settings-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:8px;">🤖 Пользовательские агенты</h2>
+            <p style="color:var(--text-secondary);margin-bottom:20px;">Создавайте собственных агентов с кастомными системными промптами, инструментами и параметрами</p>
+            <div class="agents-list" id="agentsList">
+                <div class="agent-card">
+                    <div class="agent-card-header">
+                        <div class="agent-avatar">🏗️</div>
+                        <div>
+                            <h3>Architect</h3>
+                            <span class="agent-badge system">Системный</span>
+                        </div>
+                    </div>
+                    <p>Планирование архитектуры, декомпозиция задач, выбор технологий</p>
+                    <div class="agent-tools">📝 Plan • 🔍 Research • 📁 Files</div>
+                </div>
+                <div class="agent-card">
+                    <div class="agent-card-header">
+                        <div class="agent-avatar">💻</div>
+                        <div>
+                            <h3>Coder</h3>
+                            <span class="agent-badge system">Системный</span>
+                        </div>
+                    </div>
+                    <p>Написание кода, рефакторинг, интеграция API</p>
+                    <div class="agent-tools">💻 Code • 🔧 SSH • 🌐 Web</div>
+                </div>
+                <div class="agent-card">
+                    <div class="agent-card-header">
+                        <div class="agent-avatar">🔍</div>
+                        <div>
+                            <h3>Reviewer</h3>
+                            <span class="agent-badge system">Системный</span>
+                        </div>
+                    </div>
+                    <p>Проверка кода, поиск ошибок, оптимизация</p>
+                    <div class="agent-tools">🔍 Review • 🛡️ Security • 📊 Metrics</div>
+                </div>
+                <div class="agent-card">
+                    <div class="agent-card-header">
+                        <div class="agent-avatar">✅</div>
+                        <div>
+                            <h3>QA</h3>
+                            <span class="agent-badge system">Системный</span>
+                        </div>
+                    </div>
+                    <p>Финальная проверка, тестирование, валидация</p>
+                    <div class="agent-tools">✅ Test • 📊 Report • 🔄 Retry</div>
+                </div>
+            </div>
+            <div style="margin-top:20px;">
+                <button class="settings-save-btn" onclick="showCreateAgentModal()">➕ Создать агента</button>
+            </div>
+        </div>
+
+        <!-- ── Audit Log Panel ── -->
+        <div id="tabAudit" class="settings-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:8px;">📜 Журнал аудита</h2>
+            <p style="color:var(--text-secondary);margin-bottom:20px;">История всех действий в системе и управление GDPR</p>
+            <div class="audit-controls" style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+                <select id="auditFilter" onchange="loadAuditLogs()" style="padding:8px 12px;border-radius:8px;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border-color);">
+                    <option value="all">Все события</option>
+                    <option value="auth">🔐 Авторизация</option>
+                    <option value="chat">💬 Чаты</option>
+                    <option value="file">📁 Файлы</option>
+                    <option value="settings">⚙️ Настройки</option>
+                    <option value="security">🛡️ Безопасность</option>
+                </select>
+                <button class="settings-save-btn" onclick="exportAuditLogs()">📤 Экспорт логов</button>
+                <button class="settings-save-btn" style="background:var(--danger);" onclick="showGDPRPanel()">🛡️ GDPR Управление</button>
+            </div>
+            <div id="auditLogList" class="audit-log-list" style="max-height:500px;overflow-y:auto;">
+                <div class="audit-entry" style="padding:12px;border-bottom:1px solid var(--border-color);display:flex;gap:12px;align-items:center;">
+                    <span style="font-size:20px;">🔐</span>
+                    <div style="flex:1;">
+                        <div style="font-weight:600;">Login — admin@example.com</div>
+                        <div style="color:var(--text-secondary);font-size:12px;">IP: 127.0.0.1 • User-Agent: Chrome/120</div>
+                    </div>
+                    <div style="color:var(--text-secondary);font-size:12px;white-space:nowrap;">Только что</div>
+                </div>
+                <div style="padding:40px;text-align:center;color:var(--text-secondary);">
+                    Нажмите кнопку ниже для загрузки полного журнала
+                </div>
+            </div>
+            <div style="margin-top:16px;text-align:center;">
+                <button class="settings-save-btn" onclick="loadAuditLogs()">🔄 Загрузить журнал</button>
+            </div>
+
+            <!-- GDPR Modal -->
+            <div id="gdprModal" class="modal-overlay hidden" style="display:none;">
+                <div class="modal-content" style="max-width:500px;">
+                    <h3 style="margin-bottom:16px;">🛡️ GDPR Управление данными</h3>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <button class="settings-save-btn" onclick="gdprExportData()">📥 Экспорт моих данных (DSAR)</button>
+                        <button class="settings-save-btn" onclick="gdprAnonymize()">👤 Анонимизировать мои данные</button>
+                        <button class="settings-save-btn" style="background:var(--danger);" onclick="gdprDeleteAll()">🗑️ Удалить все мои данные (Right to be Forgotten)</button>
+                        <button class="settings-save-btn" style="background:var(--bg-tertiary);" onclick="hideGDPRPanel()">✖ Закрыть</button>
+                    </div>
+                    <p style="margin-top:12px;font-size:12px;color:var(--text-secondary);">В соответствии с GDPR (General Data Protection Regulation), вы имеете право на доступ, исправление и удаление ваших персональных данных.</p>
+                </div>
+            </div>
+        </div>
 
     <!-- ── Preview Panel ── -->
     <div id="previewPanel" class="preview-panel hidden">
