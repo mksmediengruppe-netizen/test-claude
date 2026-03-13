@@ -696,9 +696,9 @@ class AgentLoop:
             stdout = result.get("stdout", "")
             if stdout:
                 lines = stdout.split("\n")
-                if len(lines) > 5:
-                    return "\n".join(lines[:5]) + f"\n... [{len(lines)} строк]"
-                return stdout[:500]
+                if len(lines) > 50:
+                    return "\n".join(lines[:50]) + f"\n... [ещё {len(lines) - 50} строк]"
+                return stdout[:3000]
             return "✅ Команда выполнена (пустой вывод)"
 
         elif tool_name in ("file_write",):

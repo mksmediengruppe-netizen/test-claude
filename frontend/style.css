@@ -2268,7 +2268,7 @@ a:hover { text-decoration: underline; }
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     font-size: 13px;
-    max-height: 400px;
+    max-height: 800px;
     overflow-y: auto;
 }
 
@@ -2383,8 +2383,11 @@ a:hover { text-decoration: underline; }
     flex: 1;
     white-space: pre-wrap;
     word-break: break-word;
-    max-height: 100px;
+    max-height: 400px;
     overflow-y: auto;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    line-height: 1.5;
 }
 
 .agent-tool-result .tool-elapsed {

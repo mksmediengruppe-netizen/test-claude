@@ -658,6 +658,58 @@ def upload_file():
 
 
 # ══════════════════════════════════════════════════════════════════
+# ██ Parse SSH from message text ██
+# ══════════════════════════════════════════════════════════════════
+
+def _parse_ssh_from_message(message):
+    """
+    Parse SSH credentials from user message text.
+    Supports formats:
+      - root@192.168.1.1 mypassword ...
+      - user@hostname password ...
+      - root@10.0.0.1 P@ssw0rd! сходи посмотри ...
+    Returns dict with host, username, password or None.
+    """
+    if not message:
+        return None
+
+    # Pattern: user@host password
+    # IP: digits and dots, or hostname
+    # Password: non-space string (can contain special chars)
+    m = re.match(
+        r'^\s*([a-zA-Z0-9_.-]+)@([a-zA-Z0-9._-]+)\s+(\S+)\s*(.*)',
+        message
+    )
+    if m:
+        username = m.group(1)
+        host = m.group(2)
+        password = m.group(3)
+        # Validate host looks like IP or hostname
+        if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', host) or '.' in host:
+            return {
+                "host": host,
+                "username": username,
+                "password": password
+            }
+
+    # Pattern: just IP password (assume root)
+    m = re.match(
+        r'^\s*(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+(\S+)\s*(.*)',
+        message
+    )
+    if m:
+        host = m.group(1)
+        password = m.group(2)
+        return {
+            "host": host,
+            "username": "root",
+            "password": password
+        }
+
+    return None
+
+
+# ══════════════════════════════════════════════════════════════════
 # ██ AGENT LOOP — CORE: AI plans, executes, verifies autonomously ██
 # ══════════════════════════════════════════════════════════════════
 
@@ -689,6 +741,18 @@ def send_message(chat_id):
         "username": user_settings.get("ssh_user", "root"),
         "password": user_settings.get("ssh_password", ""),
     }
+
+    # ── Parse SSH credentials from message text ──
+    # Formats: "root@IP password ...", "user@IP password ...", "IP password ..."
+    ssh_from_msg = _parse_ssh_from_message(user_message)
+    if ssh_from_msg:
+        # Merge: message SSH overrides settings SSH
+        if ssh_from_msg.get("host"):
+            ssh_credentials["host"] = ssh_from_msg["host"]
+        if ssh_from_msg.get("username"):
+            ssh_credentials["username"] = ssh_from_msg["username"]
+        if ssh_from_msg.get("password"):
+            ssh_credentials["password"] = ssh_from_msg["password"]
 
     # Save user message
     now = datetime.now(timezone.utc).isoformat()
@@ -724,8 +788,15 @@ def send_message(chat_id):
         "напиши и разверни", "сделай сайт", "сделай приложение",
         "выполни", "команд", "apt", "pip", "npm", "git",
         "nginx", "systemd", "docker", "service",
+        "сходи", "посмотри", "покажи", "папк", "директор",
+        "лог", "статус", "процесс", "порт", "диск",
+        "память", "uptime", "top", "ls", "cat", "mkdir",
     ]
     is_agent_task = any(kw in user_message.lower() for kw in agent_keywords)
+
+    # If SSH credentials were parsed from message — it's definitely an agent task
+    if ssh_from_msg:
+        is_agent_task = True
 
     # Also check if SSH credentials are configured
     has_ssh = bool(ssh_credentials.get("host") and ssh_credentials.get("password"))
