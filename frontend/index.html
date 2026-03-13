@@ -143,7 +143,7 @@
         <!-- Model selector bar (dropdown like Manus) -->
         <div id="modelChipsBar" class="model-selector-bar">
             <div class="model-dropdown-wrap">
-                <button class="model-dropdown-btn" id="modelDropdownBtn" onclick="toggleModelDropdown()">
+                <button class="model-dropdown-btn" id="modelDropdownBtn" onclick="event.stopPropagation(); toggleModelDropdown(event)">
                     <span class="model-dropdown-dot" id="modelDot"></span>
                     <span id="modelDropdownLabel">Премиум — MiniMax M2.5</span>
                     <svg class="model-dropdown-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>

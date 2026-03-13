@@ -463,7 +463,7 @@ a:hover { text-decoration: underline; }
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-lg);
-    z-index: 500;
+    z-index: 9999;
     overflow: hidden;
     animation: dropdownFadeIn 0.15s ease;
 }
