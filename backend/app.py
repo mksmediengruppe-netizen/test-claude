@@ -779,20 +779,34 @@ def send_message(chat_id):
     model_name = config["coding"]["name"]
 
     # Detect if this is an agent task (needs SSH/files/browser) or simple chat
+    # Agent keywords — actions that require real execution on servers
     agent_keywords = [
         "создай", "разверни", "деплой", "установи", "настрой", "запусти",
-        "подключись", "ssh", "сервер", "файл", "проверь сайт", "открой",
+        "подключись", "ssh", "проверь сайт",
         "скачай", "обнови", "перезапусти", "удали", "скопируй",
         "create", "deploy", "install", "setup", "run", "connect",
-        "check", "server", "file", "restart", "update", "build",
+        "check", "restart", "update", "build",
         "напиши и разверни", "сделай сайт", "сделай приложение",
         "выполни", "команд", "apt", "pip", "npm", "git",
         "nginx", "systemd", "docker", "service",
-        "сходи", "посмотри", "покажи", "папк", "директор",
-        "лог", "статус", "процесс", "порт", "диск",
-        "память", "uptime", "top", "ls", "cat", "mkdir",
+        "сходи", "папк", "директор",
+        "лог", "процесс", "порт", "диск",
+        "uptime", "top", "ls ", "cat ", "mkdir",
     ]
-    is_agent_task = any(kw in user_message.lower() for kw in agent_keywords)
+    # Keywords that indicate analysis/review tasks — NOT agent tasks
+    analysis_keywords = [
+        "изучи", "проанализируй", "анализ", "документ", "оцени",
+        "сравни", "опиши", "расскажи", "объясни", "что думаешь",
+        "что не хватает", "что добавить", "review", "analyze",
+        "аудит", "ревью", "проверку кода", "code review",
+    ]
+    msg_lower = user_message.lower()
+    is_analysis = any(kw in msg_lower for kw in analysis_keywords)
+    is_agent_task = any(kw in msg_lower for kw in agent_keywords)
+
+    # If it looks like analysis/review AND no explicit SSH in message — prefer chat mode
+    if is_analysis and not ssh_from_msg:
+        is_agent_task = False
 
     # If SSH credentials were parsed from message — it's definitely an agent task
     if ssh_from_msg:
@@ -896,7 +910,11 @@ def send_message(chat_id):
                 messages.append({"role": msg["role"], "content": msg["content"]})
 
             if file_content:
-                messages[-1]["content"] = f"{file_content}\n\n---\n\nЗадача:\n{user_message}"
+                # Truncate file content to avoid exceeding API limits
+                fc = file_content
+                if len(fc) > 30000:
+                    fc = fc[:30000] + f"\n... [обрезано, всего {len(file_content)} символов]"
+                messages[-1]["content"] = f"{fc}\n\n---\n\nЗадача:\n{user_message}"
 
             # Stream response
             headers = {

@@ -538,6 +538,10 @@ class AgentLoop:
         # Build user message with file content
         full_message = user_message
         if file_content:
+            # Truncate file content to avoid exceeding API limits
+            max_file_len = 30000
+            if len(file_content) > max_file_len:
+                file_content = file_content[:max_file_len] + f"\n... [обрезано, всего {len(file_content)} символов]"
             full_message = f"{file_content}\n\n---\n\nЗадача:\n{user_message}"
 
         # Add SSH credentials hint if available
@@ -561,26 +565,33 @@ class AgentLoop:
             tool_calls_received = None
             ai_text = ""
 
-            for event in self._call_ai_stream(messages, tools=TOOLS_SCHEMA):
-                if event["type"] == "text_delta":
-                    ai_text += event["text"]
-                    full_response_text += event["text"]
-                    yield self._sse({"type": "content", "text": event["text"]})
+            try:
+                for event in self._call_ai_stream(messages, tools=TOOLS_SCHEMA):
+                    if event["type"] == "text_delta":
+                        ai_text += event["text"]
+                        full_response_text += event["text"]
+                        yield self._sse({"type": "content", "text": event["text"]})
 
-                elif event["type"] == "tool_calls":
-                    tool_calls_received = event["tool_calls"]
-                    ai_text = event.get("content", "")
-                    if ai_text:
-                        full_response_text += ai_text
+                    elif event["type"] == "tool_calls":
+                        tool_calls_received = event["tool_calls"]
+                        ai_text = event.get("content", "")
+                        if ai_text:
+                            full_response_text += ai_text
 
-                elif event["type"] == "text_complete":
-                    ai_text = event.get("content", "")
-                    # No tool calls — AI is done talking
-                    break
+                    elif event["type"] == "text_complete":
+                        ai_text = event.get("content", "")
+                        # No tool calls — AI is done talking
+                        break
 
-                elif event["type"] == "error":
-                    yield self._sse({"type": "error", "text": f"AI Error: {event['error']}"})
-                    return
+                    elif event["type"] == "error":
+                        yield self._sse({"type": "error", "text": f"AI Error: {event['error']}"})
+                        return
+            except Exception as e:
+                error_msg = f"Ошибка при вызове AI: {str(e)}"
+                yield self._sse({"type": "error", "text": error_msg})
+                yield self._sse({"type": "content", "text": f"\n\n❌ {error_msg}"})
+                full_response_text += f"\n\n❌ {error_msg}"
+                return
 
             # If no tool calls, the agent is done
             if not tool_calls_received:
