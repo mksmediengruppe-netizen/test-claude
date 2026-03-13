@@ -2075,10 +2075,9 @@ def list_models():
 def list_canvases():
     """List all canvas documents for the user."""
     try:
-        from project_manager import ProjectManager
-        pm = ProjectManager(data_dir=DATA_DIR)
+        from project_manager import list_canvases as pm_list_canvases
         user_id = request.args.get("user_id", "default")
-        canvases = pm.list_canvases(user_id)
+        canvases = pm_list_canvases(user_id)
         return jsonify({"success": True, "canvases": canvases})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -2088,10 +2087,8 @@ def list_canvases():
 def get_canvas(canvas_id):
     """Get a specific canvas document."""
     try:
-        from project_manager import ProjectManager
-        pm = ProjectManager(data_dir=DATA_DIR)
-        user_id = request.args.get("user_id", "default")
-        canvas = pm.get_canvas(user_id, canvas_id)
+        from project_manager import get_canvas as pm_get_canvas
+        canvas = pm_get_canvas(canvas_id)
         if canvas:
             return jsonify({"success": True, "canvas": canvas})
         return jsonify({"success": False, "error": "Canvas not found"}), 404
@@ -2103,14 +2100,11 @@ def get_canvas(canvas_id):
 def update_canvas(canvas_id):
     """Update a canvas document."""
     try:
-        from project_manager import ProjectManager
-        pm = ProjectManager(data_dir=DATA_DIR)
+        from project_manager import update_canvas as pm_update_canvas
         data = request.get_json()
-        user_id = data.get("user_id", "default")
-        title = data.get("title", "")
         content = data.get("content", "")
-        canvas_type = data.get("canvas_type", "document")
-        result = pm.canvas_create(user_id, title, content, canvas_type, canvas_id)
+        title = data.get("title")
+        result = pm_update_canvas(canvas_id, content, title)
         return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -2120,10 +2114,8 @@ def update_canvas(canvas_id):
 def delete_canvas(canvas_id):
     """Delete a canvas document."""
     try:
-        from project_manager import ProjectManager
-        pm = ProjectManager(data_dir=DATA_DIR)
-        user_id = request.args.get("user_id", "default")
-        result = pm.delete_canvas(user_id, canvas_id)
+        from project_manager import delete_canvas as pm_delete_canvas
+        result = pm_delete_canvas(canvas_id)
         return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -2137,11 +2129,9 @@ def delete_canvas(canvas_id):
 def list_memories():
     """List stored memories."""
     try:
-        from project_manager import ProjectManager
-        pm = ProjectManager(data_dir=DATA_DIR)
+        from project_manager import get_memory_items
         user_id = request.args.get("user_id", "default")
-        category = request.args.get("category")
-        memories = pm.list_memories(user_id, category)
+        memories = get_memory_items(user_id)
         return jsonify({"success": True, "memories": memories})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -2151,14 +2141,13 @@ def list_memories():
 def store_memory_api():
     """Store a new memory."""
     try:
-        from project_manager import ProjectManager
-        pm = ProjectManager(data_dir=DATA_DIR)
+        from project_manager import store_memory
         data = request.get_json()
-        user_id = data.get("user_id", "default")
         key = data.get("key", "")
         value = data.get("value", "")
+        user_id = data.get("user_id", "default")
         category = data.get("category", "fact")
-        result = pm.store_memory(user_id, key, value, category)
+        result = store_memory(key, value, user_id, category=category)
         return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -2168,10 +2157,8 @@ def store_memory_api():
 def delete_memory(memory_id):
     """Delete a memory entry."""
     try:
-        from project_manager import ProjectManager
-        pm = ProjectManager(data_dir=DATA_DIR)
-        user_id = request.args.get("user_id", "default")
-        result = pm.delete_memory(user_id, memory_id)
+        from project_manager import delete_memory as pm_delete_memory
+        result = pm_delete_memory(memory_id)
         return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -2185,10 +2172,9 @@ def delete_memory(memory_id):
 def list_custom_agents():
     """List custom agent configurations."""
     try:
-        from project_manager import ProjectManager
-        pm = ProjectManager(data_dir=DATA_DIR)
+        from project_manager import list_custom_agents as pm_list_agents
         user_id = request.args.get("user_id", "default")
-        agents = pm.list_custom_agents(user_id)
+        agents = pm_list_agents(user_id)
         return jsonify({"success": True, "agents": agents})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -2198,11 +2184,14 @@ def list_custom_agents():
 def create_custom_agent():
     """Create a custom agent."""
     try:
-        from project_manager import ProjectManager
-        pm = ProjectManager(data_dir=DATA_DIR)
+        from project_manager import create_custom_agent as pm_create_agent
         data = request.get_json()
+        name = data.get("name", "")
         user_id = data.get("user_id", "default")
-        result = pm.create_custom_agent(user_id, data)
+        system_prompt = data.get("system_prompt", "")
+        description = data.get("description", "")
+        avatar = data.get("avatar", "")
+        result = pm_create_agent(name, user_id, system_prompt, description=description, avatar=avatar)
         return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -2212,10 +2201,8 @@ def create_custom_agent():
 def delete_custom_agent(agent_id):
     """Delete a custom agent."""
     try:
-        from project_manager import ProjectManager
-        pm = ProjectManager(data_dir=DATA_DIR)
-        user_id = request.args.get("user_id", "default")
-        result = pm.delete_custom_agent(user_id, agent_id)
+        from project_manager import delete_custom_agent as pm_delete_agent
+        result = pm_delete_agent(agent_id)
         return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500

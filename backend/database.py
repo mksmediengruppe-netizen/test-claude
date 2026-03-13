@@ -177,8 +177,9 @@ def _migrate_from_json(conn):
         for token, session in data.get("sessions", {}).items():
             if isinstance(session, dict):
                 conn.execute(
-                    "INSERT OR IGNORE INTO sessions (token, user_id, created_at, ip, user_agent) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT OR IGNORE INTO sessions (token, user_id, created_at, expires_at, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?)",
                     (token, session.get("user_id", ""), session.get("created_at", now),
+                     session.get("expires_at", ""),
                      session.get("ip", ""), session.get("user_agent", ""))
                 )
 
@@ -249,11 +250,31 @@ def load_db():
     # Sessions
     sessions = {}
     for row in conn.execute("SELECT * FROM sessions"):
+        # Parse expires_at — could be ISO string, numeric string, or None
+        expires_at = row["expires_at"]
+        if expires_at:
+            try:
+                expires_at = float(expires_at)
+            except (ValueError, TypeError):
+                try:
+                    from datetime import datetime as _dt
+                    expires_at = _dt.fromisoformat(expires_at).timestamp()
+                except:
+                    expires_at = 0
+        else:
+            expires_at = 0
+        # Parse created_at similarly
+        created_at = row["created_at"]
+        try:
+            created_at = float(created_at)
+        except (ValueError, TypeError):
+            pass
         sessions[row["token"]] = {
             "user_id": row["user_id"],
-            "created_at": row["created_at"],
-            "ip": row["ip"],
-            "user_agent": row["user_agent"]
+            "created_at": created_at,
+            "expires_at": expires_at,
+            "ip": row["ip"] or "",
+            "user_agent": row["user_agent"] or ""
         }
     db["sessions"] = sessions
 
@@ -335,8 +356,9 @@ def save_db(db):
             for token, session in db.get("sessions", {}).items():
                 if isinstance(session, dict):
                     conn.execute(
-                        "INSERT OR REPLACE INTO sessions (token, user_id, created_at, ip, user_agent) VALUES (?, ?, ?, ?, ?)",
+                        "INSERT OR REPLACE INTO sessions (token, user_id, created_at, expires_at, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?)",
                         (token, session.get("user_id", ""), session.get("created_at", now),
+                         session.get("expires_at", ""),
                          session.get("ip", ""), session.get("user_agent", ""))
                     )
 
