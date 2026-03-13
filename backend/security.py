@@ -231,10 +231,27 @@ def require_permission(permission: str):
 _ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY", JWT_SECRET[:32])
 
 
-def encrypt_value(plaintext: str) -> str:
-    """Encrypt a string value using AES-256-compatible approach."""
+def _get_fernet():
+    """Get Fernet instance for AES-256 encryption."""
     import base64
-    # Simple XOR-based encryption (for production, use cryptography.fernet)
+    try:
+        from cryptography.fernet import Fernet
+        # Derive a 32-byte key from _ENCRYPTION_KEY via SHA-256, then base64-encode for Fernet
+        key_bytes = hashlib.sha256(_ENCRYPTION_KEY.encode()).digest()
+        fernet_key = base64.urlsafe_b64encode(key_bytes)
+        return Fernet(fernet_key)
+    except ImportError:
+        return None
+
+
+def encrypt_value(plaintext: str) -> str:
+    """Encrypt a string value using AES-256 (Fernet) with fallback to XOR."""
+    import base64
+    fernet = _get_fernet()
+    if fernet:
+        token = fernet.encrypt(plaintext.encode('utf-8'))
+        return 'fernet:' + token.decode()
+    # Fallback: XOR (legacy)
     key = hashlib.sha256(_ENCRYPTION_KEY.encode()).digest()
     encrypted = bytes(a ^ b for a, b in zip(plaintext.encode('utf-8'),
                                              (key * (len(plaintext) // 32 + 1))[:len(plaintext.encode('utf-8'))]))
@@ -242,8 +259,13 @@ def encrypt_value(plaintext: str) -> str:
 
 
 def decrypt_value(ciphertext: str) -> str:
-    """Decrypt an encrypted string value."""
+    """Decrypt an encrypted string value. Supports Fernet and legacy XOR."""
     import base64
+    if ciphertext.startswith('fernet:'):
+        fernet = _get_fernet()
+        if fernet:
+            return fernet.decrypt(ciphertext[7:].encode()).decode('utf-8')
+    # Legacy XOR decryption
     key = hashlib.sha256(_ENCRYPTION_KEY.encode()).digest()
     encrypted = base64.urlsafe_b64decode(ciphertext)
     decrypted = bytes(a ^ b for a, b in zip(encrypted,
@@ -548,14 +570,27 @@ def delete_user_data(user_id: str, db_read_func, db_write_func) -> Dict[str, Any
 # ══════════════════════════════════════════════════════════════
 
 def hash_password(password: str) -> str:
-    """Hash a password using SHA-256 with salt."""
-    salt = secrets.token_hex(16)
-    hashed = hashlib.sha256(f"{salt}:{password}".encode()).hexdigest()
-    return f"{salt}:{hashed}"
+    """Hash a password using bcrypt (with fallback to SHA-256 if bcrypt unavailable)."""
+    try:
+        import bcrypt
+        hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(rounds=12))
+        return 'bcrypt:' + hashed.decode('utf-8')
+    except ImportError:
+        # Fallback: salted SHA-256
+        salt = secrets.token_hex(16)
+        hashed = hashlib.sha256(f"{salt}:{password}".encode()).hexdigest()
+        return f"{salt}:{hashed}"
 
 
 def verify_password(password: str, stored_hash: str) -> bool:
-    """Verify a password against stored hash."""
+    """Verify a password against stored hash. Supports bcrypt, salted SHA-256, and legacy."""
+    if stored_hash.startswith('bcrypt:'):
+        try:
+            import bcrypt
+            return bcrypt.checkpw(password.encode('utf-8'), stored_hash[7:].encode('utf-8'))
+        except ImportError:
+            return False
+
     if ':' not in stored_hash:
         # Legacy: plain SHA-256
         return hashlib.sha256(password.encode()).hexdigest() == stored_hash

@@ -1,5 +1,5 @@
 {
-  "name": "Super Agent v5.0",
+  "name": "Super Agent v6.0",
   "short_name": "SuperAgent",
   "description": "Автономный AI-инженер с LangGraph StateGraph, Self-Healing 2.0, Vector Memory",
   "start_url": "/",
