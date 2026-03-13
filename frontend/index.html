@@ -35,7 +35,8 @@
             <p class="brand-description">Автономный AI-инженер нового поколения с мультиагентной системой</p>
             <div class="brand-features">
                 <div class="brand-feature"><span class="feature-icon">🤖</span><div><strong>4 AI-агента</strong><span>Architect, Coder, Reviewer, QA</span></div></div>
-                <div class="brand-feature"><span class="feature-icon">⚡</span><div><strong>SSE Стриминг</strong><span>Ответы в реальном времени</span></div></div>
+                <div class="brand-feature"><span class="feature-icon">🔗</span><div><strong>SSH Executor</strong><span>Автономное выполнение команд</span></div></div>
+                <div class="brand-feature"><span class="feature-icon">🌐</span><div><strong>Browser Agent</strong><span>Проверка сайтов и API</span></div></div>
                 <div class="brand-feature"><span class="feature-icon">🧠</span><div><strong>Долговременная память</strong><span>Контекст между сессиями</span></div></div>
             </div>
         </div>
@@ -190,11 +191,13 @@
                         <div class="message-content">
                             👋 <strong>Привет! Я Super Agent</strong> — ваш автономный AI-инженер.<br><br>
                             Я могу:<br>
-                            • Писать код на любом языке<br>
-                            • Создавать лендинги и UI/UX дизайн<br>
-                            • Настраивать API, серверы, workflows<br>
-                            • Работать по SSH и автоматизировать задачи<br><br>
-                            Выберите шаблон ниже или опишите задачу.
+                            • 💻 Писать код на любом языке<br>
+                            • 🔗 <strong>Подключаться к серверам по SSH</strong> и выполнять команды<br>
+                            • 📁 <strong>Создавать и редактировать файлы</strong> на серверах через SFTP<br>
+                            • 🌐 <strong>Проверять сайты</strong> через браузер и тестировать API<br>
+                            • 🚀 <strong>Деплоить приложения</strong> автоматически<br>
+                            • 🧠 Мульти-агентная система (Architect → Coder → Reviewer → QA)<br><br>
+                            <em>Настройте SSH в ⚙️ Настройки для автономного режима.</em>
                         </div>
                         <div class="message-meta">
                             <span>🟢 MiniMax M2.5</span>
@@ -218,6 +221,9 @@
                     <button class="template-btn" onclick="sendTemplate('Сделай дашборд на React с графиками и таблицами')">📊 Дашборд</button>
                     <button class="template-btn" onclick="sendTemplate('Создай Telegram бота на Python с inline-кнопками')">🤖 Telegram Bot</button>
                     <button class="template-btn" onclick="sendTemplate('Создай n8n workflow для автоматизации')">🔄 n8n Workflow</button>
+                    <button class="template-btn" onclick="sendTemplate('Подключись к серверу и покажи статус системы')">🔗 SSH Статус</button>
+                    <button class="template-btn" onclick="sendTemplate('Установи nginx и настрой реверс-прокси')">🌐 Nginx Setup</button>
+                    <button class="template-btn" onclick="sendTemplate('Проверь сайт https://example.com и покажи статус')">🔍 Проверка сайта</button>
                 </div>
 
                 <!-- Progress indicator -->
@@ -350,7 +356,37 @@
                 </div>
             </div>
 
-            <button class="settings-save-btn" onclick="saveSettings()">💾 Сохранить настройки</button>
+            <div class="settings-section">
+                <div class="settings-section-title">🔗 SSH Подключение (для автономного режима)</div>
+                <div class="settings-card" style="cursor:default">
+                    <div class="settings-card-desc" style="margin-bottom:12px;">Укажите данные сервера, чтобы агент мог автоматически выполнять команды, создавать файлы и деплоить приложения.</div>
+                    <div style="display:flex;flex-direction:column;gap:10px;">
+                        <div style="display:flex;gap:10px;">
+                            <input type="text" id="sshHost" class="settings-input" placeholder="IP или hostname сервера" style="flex:2;">
+                            <input type="number" id="sshPort" class="settings-input" placeholder="Порт (22)" value="22" style="flex:1;max-width:100px;">
+                        </div>
+                        <div style="display:flex;gap:10px;">
+                            <input type="text" id="sshUser" class="settings-input" placeholder="Логин (root)" value="root" style="flex:1;">
+                            <input type="password" id="sshPassword" class="settings-input" placeholder="Пароль" style="flex:1;">
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <button class="settings-save-btn" onclick="testSSHConnection()" style="flex:1;background:var(--accent-green);padding:8px 16px;font-size:13px;">🔌 Тест подключения</button>
+                            <button class="settings-save-btn" onclick="saveSSHSettings()" style="flex:1;padding:8px 16px;font-size:13px;">💾 Сохранить SSH</button>
+                        </div>
+                        <div id="sshTestResult" class="ssh-test-result" style="display:none;"></div>
+                    </div>
+                </div>
+                <div id="sshServersList" style="margin-top:12px;"></div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">🔑 GitHub Token (для git операций)</div>
+                <div class="settings-card" style="cursor:default">
+                    <input type="password" id="githubToken" class="settings-input" placeholder="ghp_xxxxxxxxxxxx">
+                </div>
+            </div>
+
+            <button class="settings-save-btn" onclick="saveSettings()">💾 Сохранить все настройки</button>
         </div>
 
         <!-- Tab content: Analytics -->

@@ -46,7 +46,145 @@ async function api(path, options = {}) {
     return resp.json();
 }
 
-// ═══ Auth ════════════════════════════════════════════════════════
+// ═══ Agent Actions Helper ═════════════════════════════════════════
+function addAgentAction(assistantId, html) {
+    let actionsEl = document.getElementById(`${assistantId}-actions`);
+    if (!actionsEl) {
+        const contentEl = document.getElementById(`${assistantId}-content`);
+        if (contentEl) {
+            contentEl.insertAdjacentHTML('beforebegin', `<div id="${assistantId}-actions" class="agent-actions-log"></div>`);
+            actionsEl = document.getElementById(`${assistantId}-actions`);
+        }
+    }
+    if (actionsEl) {
+        actionsEl.insertAdjacentHTML('beforeend', html);
+        const container = document.getElementById('chatMessages');
+        if (container) container.scrollTop = container.scrollHeight;
+    }
+}
+
+function getToolIcon(tool) {
+    const icons = {
+        'ssh_execute': '💻',
+        'file_write': '📁',
+        'file_read': '📄',
+        'browser_navigate': '🌐',
+        'browser_check_site': '🔍',
+        'browser_get_text': '📝',
+        'browser_check_api': '🔌',
+        'task_complete': '🎉'
+    };
+    return icons[tool] || '🔧';
+}
+
+function getToolLabel(tool) {
+    const labels = {
+        'ssh_execute': 'SSH Команда',
+        'file_write': 'Создание файла',
+        'file_read': 'Чтение файла',
+        'browser_navigate': 'Открытие страницы',
+        'browser_check_site': 'Проверка сайта',
+        'browser_get_text': 'Получение текста',
+        'browser_check_api': 'API Запрос',
+        'task_complete': 'Завершение'
+    };
+    return labels[tool] || tool;
+}
+
+function formatToolArgs(tool, args) {
+    if (!args) return '';
+    if (tool === 'ssh_execute') {
+        return `<code>${escapeHtml(args.command || '')}</code>`;
+    }
+    if (tool === 'file_write') {
+        return `<code>${escapeHtml(args.path || '')}</code>`;
+    }
+    if (tool === 'file_read') {
+        return `<code>${escapeHtml(args.path || '')}</code>`;
+    }
+    if (tool.startsWith('browser_')) {
+        return `<code>${escapeHtml(args.url || '')}</code>`;
+    }
+    return '';
+}
+
+// ═══ SSH Settings ═════════════════════════════════════════════
+async function testSSHConnection() {
+    const host = document.getElementById('sshHost').value.trim();
+    const username = document.getElementById('sshUser').value.trim() || 'root';
+    const password = document.getElementById('sshPassword').value;
+    const port = parseInt(document.getElementById('sshPort').value) || 22;
+    const resultEl = document.getElementById('sshTestResult');
+
+    if (!host || !password) {
+        resultEl.style.display = 'block';
+        resultEl.className = 'ssh-test-result error';
+        resultEl.textContent = '❗ Укажите хост и пароль';
+        return;
+    }
+
+    resultEl.style.display = 'block';
+    resultEl.className = 'ssh-test-result loading';
+    resultEl.textContent = '🔄 Подключение...';
+
+    try {
+        const data = await api('/ssh/test', {
+            method: 'POST',
+            body: JSON.stringify({ host, username, password, port })
+        });
+
+        if (data.success) {
+            resultEl.className = 'ssh-test-result success';
+            resultEl.textContent = `✅ Подключено! ${data.server_info || ''}`;
+        } else {
+            resultEl.className = 'ssh-test-result error';
+            resultEl.textContent = `❌ ${data.error || 'Ошибка подключения'}`;
+        }
+    } catch (e) {
+        resultEl.className = 'ssh-test-result error';
+        resultEl.textContent = `❌ ${e.message}`;
+    }
+}
+
+async function saveSSHSettings() {
+    const host = document.getElementById('sshHost').value.trim();
+    const username = document.getElementById('sshUser').value.trim() || 'root';
+    const password = document.getElementById('sshPassword').value;
+
+    state.settings.ssh_host = host;
+    state.settings.ssh_user = username;
+    state.settings.ssh_password = password;
+
+    try {
+        await api('/settings', {
+            method: 'PUT',
+            body: JSON.stringify(state.settings)
+        });
+        toast('✅ SSH настройки сохранены', 'success');
+    } catch (e) {
+        toast('Ошибка: ' + e.message, 'error');
+    }
+}
+
+function loadSSHSettings() {
+    const hostEl = document.getElementById('sshHost');
+    const userEl = document.getElementById('sshUser');
+    const passEl = document.getElementById('sshPassword');
+    if (hostEl && state.settings.ssh_host) hostEl.value = state.settings.ssh_host;
+    if (userEl && state.settings.ssh_user) userEl.value = state.settings.ssh_user;
+    if (passEl && state.settings.ssh_password) passEl.value = state.settings.ssh_password;
+}
+
+function setTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('sa_theme', theme);
+    updateThemeButton();
+    // Update theme cards
+    document.getElementById('themeDarkCard')?.classList.toggle('selected', theme === 'dark');
+    document.getElementById('themeLightCard')?.classList.toggle('selected', theme === 'light');
+}
+
+// ═══ Init ════════════════════════════════════════════════════════
 async function doLogin() {
     const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
@@ -192,6 +330,8 @@ function showApp() {
     document.getElementById('loginScreen').classList.add('hidden');
     document.getElementById('appContainer').classList.remove('hidden');
     updateUI();
+    // Load SSH settings into form
+    setTimeout(loadSSHSettings, 100);
 }
 
 // ═══ Chat Management ════════════════════════════════════════
@@ -347,6 +487,10 @@ function stopGeneration() {
         state.abortController.abort();
         state.abortController = null;
     }
+    // Also stop agent on backend
+    if (state.currentChat) {
+        api(`/chats/${state.currentChat.id}/stop`, { method: 'POST' }).catch(() => {});
+    }
     state.isStreaming = false;
     updateSendButton();
     showGenerationProgress(false);
@@ -497,10 +641,24 @@ async function sendMessage() {
                 try {
                     const event = JSON.parse(payload);
 
+                    // ═══ Agent Mode Events ═══
+                    if (event.type === 'agent_mode') {
+                        // Agent mode activated
+                        const actionsEl = document.getElementById(`${assistantId}-actions`);
+                        if (!actionsEl) {
+                            const contentEl = document.getElementById(`${assistantId}-content`);
+                            if (contentEl) {
+                                contentEl.insertAdjacentHTML('beforebegin', `<div id="${assistantId}-actions" class="agent-actions-log"></div>`);
+                            }
+                        }
+                    }
+
                     if (event.type === 'agent_start') {
                         currentAgent = event.role;
                         const stepEl = document.querySelector(`#${assistantId}-steps [data-role="${event.role}"]`);
                         if (stepEl) stepEl.classList.add('active');
+                        // Add agent header to actions log
+                        addAgentAction(assistantId, `<div class="agent-action-header">${event.emoji || '🤖'} <strong>${event.agent || event.role}</strong> запущен</div>`);
                     }
 
                     if (event.type === 'agent_complete') {
@@ -509,12 +667,64 @@ async function sendMessage() {
                             stepEl.classList.remove('active');
                             stepEl.classList.add('done');
                         }
+                        addAgentAction(assistantId, `<div class="agent-action-done">✅ ${event.agent || event.role} завершил работу</div>`);
                     }
 
+                    if (event.type === 'agent_iteration') {
+                        addAgentAction(assistantId, `<div class="agent-action-iter">🔄 Итерация ${event.iteration}/${event.max}</div>`);
+                    }
+
+                    // ═══ Tool Events (SSH, Files, Browser) ═══
+                    if (event.type === 'tool_start') {
+                        const toolIcon = getToolIcon(event.tool);
+                        const toolLabel = getToolLabel(event.tool);
+                        const argsPreview = formatToolArgs(event.tool, event.args);
+                        addAgentAction(assistantId, `<div class="agent-tool-start">
+                            <span class="tool-icon">${toolIcon}</span>
+                            <span class="tool-label">${toolLabel}</span>
+                            <span class="tool-args">${argsPreview}</span>
+                            <span class="tool-spinner"></span>
+                        </div>`);
+                    }
+
+                    if (event.type === 'tool_result') {
+                        const statusIcon = event.success ? '✅' : '❌';
+                        const preview = escapeHtml(event.preview || event.summary || '');
+                        const elapsed = event.elapsed ? ` (${event.elapsed}s)` : '';
+                        addAgentAction(assistantId, `<div class="agent-tool-result ${event.success ? 'success' : 'error'}">
+                            <span>${statusIcon}</span>
+                            <span class="tool-result-text">${preview}</span>
+                            <span class="tool-elapsed">${elapsed}</span>
+                        </div>`);
+                        // Remove spinner from last tool_start
+                        const actionsEl = document.getElementById(`${assistantId}-actions`);
+                        if (actionsEl) {
+                            const spinners = actionsEl.querySelectorAll('.tool-spinner');
+                            spinners.forEach(s => s.remove());
+                        }
+                    }
+
+                    if (event.type === 'task_complete') {
+                        addAgentAction(assistantId, `<div class="agent-task-complete">
+                            🎉 <strong>Задача выполнена!</strong> ${escapeHtml(event.summary || '')}
+                        </div>`);
+                    }
+
+                    // ═══ Content Streaming ═══
                     if (event.type === 'content') {
                         fullContent += event.text;
                         typingQueue.push(event.text);
                         processTypingQueue();
+                    }
+
+                    if (event.type === 'meta') {
+                        // Store metadata
+                        if (event.agent_mode) {
+                            const contentEl = document.getElementById(`${assistantId}-content`);
+                            if (contentEl) {
+                                contentEl.insertAdjacentHTML('beforebegin', `<div id="${assistantId}-actions" class="agent-actions-log"></div>`);
+                            }
+                        }
                     }
 
                     if (event.type === 'done') {
@@ -543,6 +753,10 @@ async function sendMessage() {
                         if (htmlMatch) {
                             updatePreview(htmlMatch[1]);
                         }
+                    }
+
+                    if (event.type === 'stopped') {
+                        addAgentAction(assistantId, `<div class="agent-action-stopped">⏹ ${event.text}</div>`);
                     }
 
                     if (event.type === 'error') {
@@ -704,12 +918,23 @@ function toggleDesignPro() {
 }
 
 async function saveSettings() {
+    // Also grab SSH and GitHub settings from form
+    const sshHost = document.getElementById('sshHost');
+    const sshUser = document.getElementById('sshUser');
+    const sshPassword = document.getElementById('sshPassword');
+    const githubToken = document.getElementById('githubToken');
+
+    if (sshHost) state.settings.ssh_host = sshHost.value.trim();
+    if (sshUser) state.settings.ssh_user = sshUser.value.trim() || 'root';
+    if (sshPassword && sshPassword.value) state.settings.ssh_password = sshPassword.value;
+    if (githubToken && githubToken.value) state.settings.github_token = githubToken.value.trim();
+
     try {
         await api('/settings', {
             method: 'PUT',
             body: JSON.stringify(state.settings)
         });
-        toast('Настройки сохранены', 'success');
+        toast('✅ Все настройки сохранены', 'success');
     } catch (e) {
         toast('Ошибка: ' + e.message, 'error');
     }

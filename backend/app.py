@@ -1,10 +1,11 @@
 """
 Super Agent v4.0 — Backend API Server
-Автономный AI-инженер с мультиагентной системой, долговременной памятью,
-Design Pro модулем, админ-панелью и аналитикой.
+Автономный AI-инженер с мультиагентной системой, SSH executor,
+browser agent, долговременной памятью, админ-панелью и аналитикой.
 """
 
 import os
+import sys
 import json
 import time
 import uuid
@@ -20,6 +21,13 @@ from datetime import datetime, timezone
 from functools import wraps
 from flask import Flask, request, jsonify, Response, stream_with_context
 import requests as http_requests
+
+# Add backend dir to path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from agent_loop import AgentLoop, MultiAgentLoop
+from ssh_executor import SSHExecutor, ssh_pool
+from browser_agent import BrowserAgent
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
@@ -37,32 +45,36 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 DB_FILE = os.path.join(DATA_DIR, "database.json")
 _lock = threading.Lock()
 
+# Active agent loops (for stop functionality)
+_active_agents = {}
+_agents_lock = threading.Lock()
+
 # ── Model Configurations ──────────────────────────────────────
 MODEL_CONFIGS = {
     "original": {
         "name": "Оригинал",
         "emoji": "🔴",
-        "coding": {"model": "x-ai/grok-3-fast", "name": "Grok Code Fast 1", "input_price": 0.20, "output_price": 1.50},
+        "coding": {"model": "x-ai/grok-code-fast-1", "name": "Grok Code Fast 1", "input_price": 0.20, "output_price": 1.50},
         "planner": {"model": "anthropic/claude-sonnet-4", "name": "Claude Sonnet 4.5", "input_price": 3.00, "output_price": 15.00},
-        "tools": {"model": "zhipu-ai/glm-4-plus", "name": "GLM 4.6", "input_price": 0.35, "output_price": 1.50},
+        "tools": {"model": "z-ai/glm-4.6", "name": "GLM 4.6", "input_price": 0.35, "output_price": 1.50},
         "quality": 72.1,
         "monthly_cost": "$2,200"
     },
     "premium": {
         "name": "Премиум",
         "emoji": "🟢",
-        "coding": {"model": "minimax/minimax-m1", "name": "MiniMax M2.5", "input_price": 0.27, "output_price": 0.95},
+        "coding": {"model": "minimax/minimax-m2.5", "name": "MiniMax M2.5", "input_price": 0.27, "output_price": 0.95},
         "planner": {"model": "anthropic/claude-sonnet-4", "name": "Claude Sonnet 4.5", "input_price": 3.00, "output_price": 15.00},
-        "tools": {"model": "zhipu-ai/glm-4-plus", "name": "GLM 4.6", "input_price": 0.35, "output_price": 1.50},
+        "tools": {"model": "z-ai/glm-4.6", "name": "GLM 4.6", "input_price": 0.35, "output_price": 1.50},
         "quality": 80.2,
         "monthly_cost": "$1,750"
     },
     "budget": {
         "name": "Бюджет",
         "emoji": "🔵",
-        "coding": {"model": "deepseek/deepseek-chat", "name": "DeepSeek V3.2", "input_price": 0.26, "output_price": 0.38},
-        "planner": {"model": "deepseek/deepseek-reasoner", "name": "DeepSeek R1", "input_price": 0.40, "output_price": 1.75},
-        "tools": {"model": "zhipu-ai/glm-4-plus", "name": "GLM 4.6", "input_price": 0.35, "output_price": 1.50},
+        "coding": {"model": "deepseek/deepseek-v3.2", "name": "DeepSeek V3.2", "input_price": 0.26, "output_price": 0.38},
+        "planner": {"model": "deepseek/deepseek-r1", "name": "DeepSeek R1", "input_price": 0.40, "output_price": 1.75},
+        "tools": {"model": "z-ai/glm-4.6", "name": "GLM 4.6", "input_price": 0.35, "output_price": 1.50},
         "quality": 75.8,
         "monthly_cost": "$750"
     }
@@ -70,7 +82,7 @@ MODEL_CONFIGS = {
 
 CHAT_MODELS = {
     "qwen3": {"model": "qwen/qwen3-235b-a22b", "name": "Qwen3 235B", "lang": "RU ⭐⭐⭐⭐⭐", "input_price": 0.10, "output_price": 0.60},
-    "deepseek": {"model": "deepseek/deepseek-chat", "name": "DeepSeek V3.2", "lang": "RU ⭐⭐⭐⭐⭐", "input_price": 0.26, "output_price": 0.38},
+    "deepseek": {"model": "deepseek/deepseek-v3.2", "name": "DeepSeek V3.2", "lang": "RU ⭐⭐⭐⭐⭐", "input_price": 0.26, "output_price": 0.38},
     "gpt5nano": {"model": "openai/gpt-4.1-nano", "name": "GPT-5 Nano", "lang": "RU ⭐⭐⭐⭐", "input_price": 0.05, "output_price": 0.40},
 }
 
@@ -138,6 +150,7 @@ def _load_db():
             },
             "sessions": {},
             "chats": {},
+            "ssh_servers": {},
             "analytics": {
                 "total_requests": 0,
                 "total_tokens_in": 0,
@@ -328,6 +341,91 @@ def update_settings():
     return jsonify({"ok": True, "settings": settings})
 
 
+# ── SSH Server Management ──────────────────────────────────────
+@app.route("/api/ssh/servers", methods=["GET"])
+@require_auth
+def list_ssh_servers():
+    """List saved SSH servers for current user."""
+    db = db_read()
+    servers = db.get("ssh_servers", {})
+    user_servers = {k: v for k, v in servers.items() if v.get("user_id") == request.user_id}
+    # Hide passwords in response
+    safe_servers = {}
+    for k, v in user_servers.items():
+        safe_servers[k] = {**v, "password": "***" if v.get("password") else None}
+    return jsonify({"servers": safe_servers})
+
+
+@app.route("/api/ssh/servers", methods=["POST"])
+@require_auth
+def add_ssh_server():
+    """Add a new SSH server."""
+    data = request.get_json() or {}
+    server_id = str(uuid.uuid4())[:8]
+
+    db = db_read()
+    if "ssh_servers" not in db:
+        db["ssh_servers"] = {}
+
+    db["ssh_servers"][server_id] = {
+        "id": server_id,
+        "user_id": request.user_id,
+        "name": data.get("name", data.get("host", "Server")),
+        "host": data.get("host", ""),
+        "port": data.get("port", 22),
+        "username": data.get("username", "root"),
+        "password": data.get("password", ""),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    db_write(db)
+    return jsonify({"ok": True, "server_id": server_id}), 201
+
+
+@app.route("/api/ssh/servers/<server_id>", methods=["DELETE"])
+@require_auth
+def delete_ssh_server(server_id):
+    """Delete an SSH server."""
+    db = db_read()
+    servers = db.get("ssh_servers", {})
+    if server_id in servers and servers[server_id].get("user_id") == request.user_id:
+        del servers[server_id]
+        db["ssh_servers"] = servers
+        db_write(db)
+        return jsonify({"ok": True})
+    return jsonify({"error": "Server not found"}), 404
+
+
+@app.route("/api/ssh/test", methods=["POST"])
+@require_auth
+def test_ssh_connection():
+    """Test SSH connection to a server."""
+    data = request.get_json() or {}
+    host = data.get("host", "")
+    username = data.get("username", "root")
+    password = data.get("password", "")
+    port = data.get("port", 22)
+
+    if not host:
+        return jsonify({"error": "Host is required"}), 400
+
+    try:
+        ssh = SSHExecutor(host=host, username=username, password=password, port=port, timeout=10)
+        result = ssh.connect()
+        if result["success"]:
+            # Get server info
+            info = ssh.execute_command("uname -a && hostname && uptime")
+            ssh.disconnect()
+            return jsonify({
+                "success": True,
+                "message": f"Connected to {host}",
+                "server_info": info.get("stdout", "")
+            })
+        else:
+            return jsonify({"success": False, "error": result.get("error", "Connection failed")})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
 # ── Chats ──────────────────────────────────────────────────────
 @app.route("/api/chats", methods=["GET"])
 @require_auth
@@ -375,7 +473,8 @@ def create_chat():
         "total_tokens_out": 0,
         "variant": user_settings.get("variant", "premium"),
         "model_used": "",
-        "files": []
+        "files": [],
+        "agent_actions": []
     }
 
     db["chats"][chat_id] = chat
@@ -391,7 +490,6 @@ def get_chat(chat_id):
     db = db_read()
     chat = db["chats"].get(chat_id)
     if not chat or chat.get("user_id") != request.user_id:
-        # Admin can see all chats
         if request.user.get("role") != "admin":
             return jsonify({"error": "Chat not found"}), 404
     return jsonify({"chat": chat})
@@ -559,301 +657,14 @@ def upload_file():
     return jsonify({"content": "\n\n".join(results), "file_count": len(results)})
 
 
-# ── Multi-Agent System ─────────────────────────────────────────
-class AgentOrchestrator:
-    """Orchestrates multi-agent code generation pipeline."""
+# ══════════════════════════════════════════════════════════════════
+# ██ AGENT LOOP — CORE: AI plans, executes, verifies autonomously ██
+# ══════════════════════════════════════════════════════════════════
 
-    AGENT_ROLES = {
-        "architect": {
-            "name": "Architect",
-            "emoji": "🏗️",
-            "system_prompt": """Ты — Senior Software Architect. Твоя задача:
-1. Проанализировать требования пользователя
-2. Определить архитектуру решения
-3. Разбить задачу на подзадачи для Coder
-4. Указать технологии, паттерны, структуру файлов
-Отвечай кратко и структурированно. Формат: JSON с полями plan, files, technologies."""
-        },
-        "coder": {
-            "name": "Coder",
-            "emoji": "💻",
-            "system_prompt": """Ты — Senior Full-Stack Developer. Ты пишешь production-ready код.
-Правила:
-- Чистый, читаемый код с комментариями
-- Современные паттерны и best practices
-- Полная обработка ошибок
-- Адаптивный дизайн (mobile-first)
-- Семантический HTML, CSS переменные
-- Если задача про лендинг/сайт — создавай красивый дизайн с градиентами, анимациями, hover-эффектами
-Всегда возвращай полный код файлов. Каждый файл оборачивай в ```language filename.ext"""
-        },
-        "reviewer": {
-            "name": "Reviewer",
-            "emoji": "🔍",
-            "system_prompt": """Ты — Senior Code Reviewer. Проверяешь код на:
-1. Баги и уязвимости
-2. Производительность
-3. Чистоту кода
-4. Соответствие требованиям
-5. Адаптивность и доступность
-Если находишь проблемы — предложи исправленный код. Если код хороший — подтверди."""
-        },
-        "qa": {
-            "name": "QA Engineer",
-            "emoji": "✅",
-            "system_prompt": """Ты — QA Engineer. Проверяешь финальный результат:
-1. Все ли требования выполнены?
-2. Работает ли код корректно?
-3. Есть ли edge cases?
-4. Адаптивность на мобильных?
-Если всё ок — верни финальный код без изменений. Если есть проблемы — исправь и верни."""
-        }
-    }
-
-    def __init__(self, variant="premium", enhanced=False, chat_model="qwen3"):
-        self.variant = variant
-        self.enhanced = enhanced
-        self.chat_model = chat_model
-        self.config = MODEL_CONFIGS.get(variant, MODEL_CONFIGS["premium"])
-        self.total_tokens_in = 0
-        self.total_tokens_out = 0
-        self.total_cost = 0.0
-
-    def _get_model_for_role(self, role):
-        """Get the appropriate model for agent role."""
-        if role == "coder":
-            return self.config["coding"]["model"]
-        elif role == "architect":
-            return self.config["planner"]["model"]
-        elif role in ("reviewer", "qa"):
-            return self.config["coding"]["model"]
-        elif role == "chat":
-            return CHAT_MODELS.get(self.chat_model, CHAT_MODELS["qwen3"])["model"]
-        return self.config["coding"]["model"]
-
-    def _call_model(self, model, messages, stream=False):
-        """Call OpenRouter API."""
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://minimax.mksitdev.ru",
-            "X-Title": "Super Agent v4.0"
-        }
-
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": 0.3,
-            "max_tokens": 16000,
-            "stream": stream
-        }
-
-        try:
-            resp = http_requests.post(
-                OPENROUTER_BASE_URL,
-                headers=headers,
-                json=payload,
-                stream=stream,
-                timeout=120
-            )
-            resp.raise_for_status()
-
-            if stream:
-                return resp
-            else:
-                data = resp.json()
-                choices = data.get("choices", [])
-                choice = choices[0] if choices else {}
-                content = choice.get("message", {}).get("content", "")
-                usage = data.get("usage", {})
-                self.total_tokens_in += usage.get("prompt_tokens", 0)
-                self.total_tokens_out += usage.get("completion_tokens", 0)
-                return content
-        except Exception as e:
-            return f"❌ Ошибка API: {str(e)}"
-
-    def _stream_agent_response(self, role, model, messages):
-        """Stream response from an agent, yielding SSE events."""
-        agent = self.AGENT_ROLES.get(role, {})
-        agent_name = agent.get("name", role)
-        agent_emoji = agent.get("emoji", "🤖")
-
-        # Send agent start event
-        yield f"data: {json.dumps({'type': 'agent_start', 'agent': agent_name, 'emoji': agent_emoji, 'role': role})}\n\n"
-
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://minimax.mksitdev.ru",
-            "X-Title": "Super Agent v4.0"
-        }
-
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": 0.3,
-            "max_tokens": 16000,
-            "stream": True
-        }
-
-        full_content = ""
-        try:
-            resp = http_requests.post(
-                OPENROUTER_BASE_URL,
-                headers=headers,
-                json=payload,
-                stream=True,
-                timeout=120
-            )
-            resp.raise_for_status()
-
-            for line in resp.iter_lines():
-                if not line:
-                    continue
-                line_str = line.decode("utf-8", errors="replace")
-                if not line_str.startswith("data: "):
-                    continue
-                payload_str = line_str[6:]
-                if payload_str.strip() == "[DONE]":
-                    break
-                try:
-                    chunk = json.loads(payload_str)
-                    choices = chunk.get("choices", [])
-                    if choices:
-                        delta = choices[0].get("delta", {})
-                        text = delta.get("content", "")
-                        if text:
-                            full_content += text
-                            yield f"data: {json.dumps({'type': 'content', 'text': text, 'agent': agent_name})}\n\n"
-
-                    # Track usage from final chunk (may come with empty choices)
-                    usage = chunk.get("usage")
-                    if usage:
-                        self.total_tokens_in += usage.get("prompt_tokens", 0)
-                        self.total_tokens_out += usage.get("completion_tokens", 0)
-                except json.JSONDecodeError:
-                    continue
-
-        except Exception as e:
-            error_msg = f"❌ Ошибка: {str(e)}"
-            yield f"data: {json.dumps({'type': 'error', 'text': error_msg})}\n\n"
-            full_content = error_msg
-
-        # Send agent complete event
-        yield f"data: {json.dumps({'type': 'agent_complete', 'agent': agent_name, 'role': role})}\n\n"
-
-        return full_content
-
-    def process_task_stream(self, user_message, chat_history=None, file_content=None):
-        """Process a task through the agent pipeline with streaming."""
-        if chat_history is None:
-            chat_history = []
-
-        # Build context
-        context = user_message
-        if file_content:
-            context = f"{file_content}\n\n---\n\nЗадача пользователя:\n{user_message}"
-
-        if self.enhanced:
-            # Enhanced mode: 4 agents pipeline
-            yield from self._enhanced_pipeline(context, chat_history)
-        else:
-            # Fast mode: single coder agent
-            yield from self._fast_pipeline(context, chat_history)
-
-    def _fast_pipeline(self, context, chat_history):
-        """Single agent (Coder) pipeline."""
-        model = self._get_model_for_role("coder")
-        agent = self.AGENT_ROLES["coder"]
-
-        messages = [{"role": "system", "content": agent["system_prompt"]}]
-
-        # Add chat history (last 10 messages)
-        for msg in chat_history[-10:]:
-            messages.append({
-                "role": msg.get("role", "user"),
-                "content": msg.get("content", "")
-            })
-
-        messages.append({"role": "user", "content": context})
-
-        # Stream coder response
-        yield from self._stream_agent_response("coder", model, messages)
-
-    def _enhanced_pipeline(self, context, chat_history):
-        """4-agent pipeline: Architect → Coder → Reviewer → QA."""
-        # Step 1: Architect
-        arch_model = self._get_model_for_role("architect")
-        arch_agent = self.AGENT_ROLES["architect"]
-        arch_messages = [
-            {"role": "system", "content": arch_agent["system_prompt"]},
-            {"role": "user", "content": context}
-        ]
-
-        arch_content = ""
-        for event in self._stream_agent_response("architect", arch_model, arch_messages):
-            yield event
-            # Capture content for next agent
-            try:
-                data = json.loads(event.replace("data: ", "").strip())
-                if data.get("type") == "content":
-                    arch_content += data.get("text", "")
-            except (json.JSONDecodeError, ValueError):
-                pass
-
-        # Step 2: Coder
-        code_model = self._get_model_for_role("coder")
-        code_agent = self.AGENT_ROLES["coder"]
-        code_messages = [
-            {"role": "system", "content": code_agent["system_prompt"]},
-            {"role": "user", "content": f"Архитектурный план:\n{arch_content}\n\nОригинальная задача:\n{context}\n\nНапиши полный код по этому плану."}
-        ]
-
-        code_content = ""
-        for event in self._stream_agent_response("coder", code_model, code_messages):
-            yield event
-            try:
-                data = json.loads(event.replace("data: ", "").strip())
-                if data.get("type") == "content":
-                    code_content += data.get("text", "")
-            except (json.JSONDecodeError, ValueError):
-                pass
-
-        # Step 3: Reviewer
-        rev_model = self._get_model_for_role("reviewer")
-        rev_agent = self.AGENT_ROLES["reviewer"]
-        rev_messages = [
-            {"role": "system", "content": rev_agent["system_prompt"]},
-            {"role": "user", "content": f"Проверь этот код:\n{code_content}\n\nОригинальная задача:\n{context}"}
-        ]
-
-        rev_content = ""
-        for event in self._stream_agent_response("reviewer", rev_model, rev_messages):
-            yield event
-            try:
-                data = json.loads(event.replace("data: ", "").strip())
-                if data.get("type") == "content":
-                    rev_content += data.get("text", "")
-            except (json.JSONDecodeError, ValueError):
-                pass
-
-        # Step 4: QA
-        qa_model = self._get_model_for_role("qa")
-        qa_agent = self.AGENT_ROLES["qa"]
-        qa_messages = [
-            {"role": "system", "content": qa_agent["system_prompt"]},
-            {"role": "user", "content": f"Код после ревью:\n{rev_content}\n\nОригинальная задача:\n{context}\n\nПроверь и верни финальную версию."}
-        ]
-
-        for event in self._stream_agent_response("qa", qa_model, qa_messages):
-            yield event
-
-
-# ── Chat/Send Message (SSE Streaming) ─────────────────────────
 @app.route("/api/chats/<chat_id>/send", methods=["POST"])
 @require_auth
 def send_message(chat_id):
-    """Send message and get AI response via SSE streaming."""
+    """Send message and get AI response via SSE streaming with agent loop."""
     db = db_read()
     chat = db["chats"].get(chat_id)
     if not chat or chat.get("user_id") != request.user_id:
@@ -871,6 +682,13 @@ def send_message(chat_id):
     variant = user_settings.get("variant", "premium")
     enhanced = user_settings.get("enhanced_mode", False)
     chat_model = user_settings.get("chat_model", "qwen3")
+
+    # Get SSH credentials from user settings
+    ssh_credentials = {
+        "host": user_settings.get("ssh_host", ""),
+        "username": user_settings.get("ssh_user", "root"),
+        "password": user_settings.get("ssh_password", ""),
+    }
 
     # Save user message
     now = datetime.now(timezone.utc).isoformat()
@@ -891,34 +709,185 @@ def send_message(chat_id):
     db["chats"][chat_id] = chat
     db_write(db)
 
-    # Create orchestrator
-    orchestrator = AgentOrchestrator(variant=variant, enhanced=enhanced, chat_model=chat_model)
+    # Determine which model to use
+    config = MODEL_CONFIGS.get(variant, MODEL_CONFIGS["premium"])
+    model = config["coding"]["model"]
+    model_name = config["coding"]["name"]
+
+    # Detect if this is an agent task (needs SSH/files/browser) or simple chat
+    agent_keywords = [
+        "создай", "разверни", "деплой", "установи", "настрой", "запусти",
+        "подключись", "ssh", "сервер", "файл", "проверь сайт", "открой",
+        "скачай", "обнови", "перезапусти", "удали", "скопируй",
+        "create", "deploy", "install", "setup", "run", "connect",
+        "check", "server", "file", "restart", "update", "build",
+        "напиши и разверни", "сделай сайт", "сделай приложение",
+        "выполни", "команд", "apt", "pip", "npm", "git",
+        "nginx", "systemd", "docker", "service",
+    ]
+    is_agent_task = any(kw in user_message.lower() for kw in agent_keywords)
+
+    # Also check if SSH credentials are configured
+    has_ssh = bool(ssh_credentials.get("host") and ssh_credentials.get("password"))
 
     # Build chat history for context
     history = [{"role": m["role"], "content": m["content"]} for m in chat["messages"][-10:]]
 
     def generate():
         full_response = ""
-        config = MODEL_CONFIGS.get(variant, MODEL_CONFIGS["premium"])
-        model_name = config["coding"]["name"]
 
         # Send metadata
-        yield f"data: {json.dumps({'type': 'meta', 'variant': variant, 'model': model_name, 'enhanced': enhanced})}\n\n"
+        yield f"data: {json.dumps({'type': 'meta', 'variant': variant, 'model': model_name, 'enhanced': enhanced, 'agent_mode': is_agent_task and has_ssh})}\n\n"
 
-        # Stream agent responses
-        for event in orchestrator.process_task_stream(user_message, history, file_content):
-            yield event
-            # Capture content
+        if is_agent_task and has_ssh:
+            # ═══ AGENT MODE: Real execution with SSH/Browser/Files ═══
+            yield f"data: {json.dumps({'type': 'agent_mode', 'text': 'Запускаю автономный агент...'})}\n\n"
+
+            if enhanced:
+                # Multi-agent pipeline
+                agent = MultiAgentLoop(
+                    model=model,
+                    api_key=OPENROUTER_API_KEY,
+                    api_url=OPENROUTER_BASE_URL,
+                    ssh_credentials=ssh_credentials
+                )
+            else:
+                # Single agent loop
+                agent = AgentLoop(
+                    model=model,
+                    api_key=OPENROUTER_API_KEY,
+                    api_url=OPENROUTER_BASE_URL,
+                    ssh_credentials=ssh_credentials
+                )
+
+            # Register agent for stop functionality
+            with _agents_lock:
+                _active_agents[chat_id] = agent
+
             try:
-                event_data = json.loads(event.replace("data: ", "").strip())
-                if event_data.get("type") == "content":
-                    full_response += event_data.get("text", "")
-            except (json.JSONDecodeError, ValueError):
-                pass
+                if enhanced:
+                    event_gen = agent.run_multi_agent_stream(user_message, history, file_content)
+                else:
+                    event_gen = agent.run_stream(user_message, history, file_content)
+
+                for event in event_gen:
+                    yield event
+                    # Capture text content
+                    try:
+                        event_data = json.loads(event.replace("data: ", "").strip())
+                        if event_data.get("type") == "content":
+                            full_response += event_data.get("text", "")
+                    except:
+                        pass
+
+                # Get token counts from agent
+                tokens_in = agent.total_tokens_in
+                tokens_out = agent.total_tokens_out
+
+            finally:
+                with _agents_lock:
+                    _active_agents.pop(chat_id, None)
+
+        else:
+            # ═══ CHAT MODE: Simple text response (no SSH needed) ═══
+            # Use chat model for simple questions, coding model for code tasks
+            code_keywords = ["код", "code", "функци", "class", "function", "html", "css", "js", "python", "api"]
+            is_code = any(kw in user_message.lower() for kw in code_keywords)
+
+            if is_code:
+                active_model = model
+                system_prompt = """Ты — Senior Full-Stack Developer. Ты пишешь production-ready код.
+Правила:
+- Чистый, читаемый код с комментариями
+- Современные паттерны и best practices
+- Полная обработка ошибок
+- Если задача про лендинг/сайт — создавай красивый дизайн с градиентами, анимациями
+Всегда возвращай полный код файлов. Каждый файл оборачивай в ```language filename.ext
+
+Если пользователь хочет чтобы ты ВЫПОЛНИЛ задачу на сервере (создал файлы, запустил команды) — 
+скажи ему настроить SSH подключение в настройках (иконка ⚙️), указав хост, логин и пароль сервера.
+После этого ты сможешь автоматически выполнять команды на сервере."""
+            else:
+                active_model = CHAT_MODELS.get(chat_model, CHAT_MODELS["qwen3"])["model"]
+                system_prompt = """Ты — полезный AI-ассистент Super Agent v4.0. Отвечай на русском языке.
+Ты умеешь:
+- Писать код и создавать приложения
+- Подключаться к серверам по SSH и выполнять команды
+- Создавать и редактировать файлы на серверах
+- Проверять сайты через браузер
+- Деплоить приложения автоматически
+
+Если пользователь хочет чтобы ты выполнил задачу на сервере — попроси его настроить SSH в настройках (⚙️).
+Отвечай кратко и по делу."""
+
+            messages = [{"role": "system", "content": system_prompt}]
+            for msg in history:
+                messages.append({"role": msg["role"], "content": msg["content"]})
+
+            if file_content:
+                messages[-1]["content"] = f"{file_content}\n\n---\n\nЗадача:\n{user_message}"
+
+            # Stream response
+            headers = {
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://minimax.mksitdev.ru",
+                "X-Title": "Super Agent v4.0"
+            }
+
+            payload = {
+                "model": active_model,
+                "messages": messages,
+                "temperature": 0.3,
+                "max_tokens": 16000,
+                "stream": True
+            }
+
+            tokens_in = 0
+            tokens_out = 0
+
+            try:
+                resp = http_requests.post(
+                    OPENROUTER_BASE_URL,
+                    headers=headers,
+                    json=payload,
+                    stream=True,
+                    timeout=120
+                )
+                resp.raise_for_status()
+
+                for line in resp.iter_lines():
+                    if not line:
+                        continue
+                    line_str = line.decode("utf-8", errors="replace")
+                    if not line_str.startswith("data: "):
+                        continue
+                    payload_str = line_str[6:]
+                    if payload_str.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(payload_str)
+                        choices = chunk.get("choices", [])
+                        if choices:
+                            delta = choices[0].get("delta", {})
+                            text = delta.get("content", "")
+                            if text:
+                                full_response += text
+                                yield f"data: {json.dumps({'type': 'content', 'text': text})}\n\n"
+
+                        usage = chunk.get("usage")
+                        if usage:
+                            tokens_in += usage.get("prompt_tokens", 0)
+                            tokens_out += usage.get("completion_tokens", 0)
+                    except json.JSONDecodeError:
+                        continue
+
+            except Exception as e:
+                error_msg = f"❌ Ошибка API: {str(e)}"
+                yield f"data: {json.dumps({'type': 'error', 'text': error_msg})}\n\n"
+                full_response = error_msg
 
         # Calculate cost
-        tokens_in = orchestrator.total_tokens_in
-        tokens_out = orchestrator.total_tokens_out
         cost_in = (tokens_in / 1_000_000) * config["coding"]["input_price"]
         cost_out = (tokens_out / 1_000_000) * config["coding"]["output_price"]
         total_cost = round(cost_in + cost_out, 4)
@@ -936,7 +905,8 @@ def send_message(chat_id):
             "tokens_in": tokens_in,
             "tokens_out": tokens_out,
             "cost": total_cost,
-            "enhanced": enhanced
+            "enhanced": enhanced,
+            "agent_mode": is_agent_task and has_ssh
         }
         chat2["messages"].append(assistant_msg)
         chat2["total_cost"] = round(chat2.get("total_cost", 0) + total_cost, 4)
@@ -977,11 +947,11 @@ def send_message(chat_id):
             "cost": total_cost,
             "variant": variant,
             "enhanced": enhanced,
+            "agent_mode": is_agent_task and has_ssh,
             "timestamp": now,
             "user_id": request.user_id,
             "success": "❌" not in full_response[:100]
         })
-        # Keep last 1000 episodes
         if len(memory["episodic"]) > 1000:
             memory["episodic"] = memory["episodic"][-1000:]
         db2["memory"] = memory
@@ -1000,6 +970,19 @@ def send_message(chat_id):
             "X-Accel-Buffering": "no"
         }
     )
+
+
+# ── Stop Agent ─────────────────────────────────────────────────
+@app.route("/api/chats/<chat_id>/stop", methods=["POST"])
+@require_auth
+def stop_agent(chat_id):
+    """Stop a running agent loop."""
+    with _agents_lock:
+        agent = _active_agents.get(chat_id)
+        if agent:
+            agent.stop()
+            return jsonify({"ok": True, "message": "Agent stop requested"})
+    return jsonify({"ok": False, "message": "No active agent for this chat"})
 
 
 # ── Quick Chat (non-streaming for simple questions) ────────────
@@ -1042,14 +1025,12 @@ def get_analytics():
     db = db_read()
     user = db["users"].get(request.user_id, {})
 
-    # User stats
     user_chats = [c for c in db["chats"].values() if c.get("user_id") == request.user_id]
     user_cost = sum(c.get("total_cost", 0) for c in user_chats)
     user_messages = sum(len(c.get("messages", [])) for c in user_chats)
     user_tokens_in = sum(c.get("total_tokens_in", 0) for c in user_chats)
     user_tokens_out = sum(c.get("total_tokens_out", 0) for c in user_chats)
 
-    # Per-chat stats
     chat_stats = []
     for c in user_chats:
         chat_stats.append({
@@ -1062,7 +1043,6 @@ def get_analytics():
             "created_at": c.get("created_at", "")
         })
 
-    # Daily breakdown
     daily_data = {}
     for c in user_chats:
         for msg in c.get("messages", []):
@@ -1074,10 +1054,9 @@ def get_analytics():
                     daily_data[day]["cost"] += msg.get("cost", 0)
                     daily_data[day]["requests"] += 1
 
-    # Comparison: programmer vs agent
     avg_task_cost = user_cost / max(len([m for c in user_chats for m in c.get("messages", []) if m.get("role") == "assistant"]), 1)
-    programmer_hourly = 50  # $50/hour average
-    programmer_task_time = 2  # 2 hours average
+    programmer_hourly = 50
+    programmer_task_time = 2
     programmer_cost = programmer_hourly * programmer_task_time
     savings_percent = round((1 - avg_task_cost / programmer_cost) * 100, 1) if programmer_cost > 0 else 0
 
@@ -1111,7 +1090,6 @@ def admin_list_users():
     db = db_read()
     users = []
     for uid, u in db["users"].items():
-        # Calculate user spending
         user_chats = [c for c in db["chats"].values() if c.get("user_id") == uid]
         total_cost = sum(c.get("total_cost", 0) for c in user_chats)
         total_chats = len(user_chats)
@@ -1149,7 +1127,6 @@ def admin_create_user():
 
     db = db_read()
 
-    # Check duplicate email
     for u in db["users"].values():
         if u["email"].lower() == email:
             return jsonify({"error": "Email already exists"}), 409
@@ -1315,7 +1292,6 @@ def search_memory():
     db = db_read()
     episodes = db.get("memory", {}).get("episodic", [])
 
-    # Simple keyword search (in production would use vector similarity)
     results = []
     for ep in reversed(episodes):
         task = ep.get("task", "").lower()
@@ -1337,18 +1313,15 @@ def export_chat(chat_id):
     if not chat or (chat.get("user_id") != request.user_id and request.user.get("role") != "admin"):
         return jsonify({"error": "Chat not found"}), 404
 
-    # Extract code blocks from messages
     files = {}
     for msg in chat.get("messages", []):
         if msg.get("role") == "assistant":
             content = msg.get("content", "")
-            # Find code blocks with filenames
             pattern = r'```(\w+)\s+([\w\-./]+\.\w+)\n(.*?)```'
             matches = re.findall(pattern, content, re.DOTALL)
             for lang, filename, code in matches:
                 files[filename] = code
 
-            # Also find generic code blocks
             if not matches:
                 pattern2 = r'```(\w+)\n(.*?)```'
                 matches2 = re.findall(pattern2, content, re.DOTALL)
@@ -1361,7 +1334,6 @@ def export_chat(chat_id):
     if not files:
         return jsonify({"error": "No code files found in chat"}), 404
 
-    # Create ZIP
     zip_path = os.path.join(UPLOAD_DIR, f"export_{chat_id}.zip")
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
         for fname, content in files.items():
@@ -1386,6 +1358,7 @@ def health():
         "status": "ok",
         "version": "4.0",
         "name": "Super Agent",
+        "features": ["ssh_executor", "file_manager", "browser_agent", "agent_loop", "multi_agent"],
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
 
