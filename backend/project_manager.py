@@ -599,3 +599,87 @@ def get_templates(category: str = None) -> List[Dict]:
     if category:
         templates = [t for t in templates if t.get("category") == category]
     return templates
+
+
+# ══════════════════════════════════════════════════════════════
+# OOP WRAPPERS (for compatibility with spec)
+# ══════════════════════════════════════════════════════════════
+
+class MemoryStore:
+    """OOP wrapper around memory functions."""
+
+    def store(self, user_id: str, key: str, value: str, category: str = "general",
+              project_id: str = None) -> Dict[str, Any]:
+        return store_memory(key, value, user_id, project_id, source=category)
+
+    def recall(self, user_id: str, query: str = "", project_id: str = None) -> List[Dict]:
+        items = get_memory_items(user_id, project_id)
+        if query:
+            q = query.lower()
+            items = [i for i in items if q in i.get("key", "").lower() or q in i.get("value", "").lower()]
+        return items
+
+    def get_prompt_context(self, user_id: str, project_id: str = None) -> str:
+        return get_memory_for_prompt(user_id, project_id)
+
+    def delete(self, memory_id: str) -> Dict[str, Any]:
+        return delete_memory(memory_id)
+
+
+class CanvasManager:
+    """OOP wrapper around canvas functions."""
+
+    def create(self, user_id: str, title: str = "Untitled",
+               canvas_type: str = "markdown", content: str = "",
+               project_id: str = None) -> Dict[str, Any]:
+        result = create_canvas(user_id, project_id, title, content, canvas_type)
+        if result.get("success") and result.get("canvas"):
+            result["canvas_id"] = result["canvas"]["id"]
+        return result
+
+    def get(self, canvas_id: str) -> Optional[Dict]:
+        return get_canvas(canvas_id)
+
+    def update(self, canvas_id: str, content: str, title: str = None) -> Dict[str, Any]:
+        return update_canvas(canvas_id, content, title)
+
+    def list(self, user_id: str, project_id: str = None) -> List[Dict]:
+        return list_canvases(user_id, project_id)
+
+    def delete(self, canvas_id: str) -> Dict[str, Any]:
+        return delete_canvas(canvas_id)
+
+
+class CustomAgentManager:
+    """OOP wrapper around custom agent functions."""
+
+    def create(self, user_id: str, name: str, system_prompt: str,
+               category: str = "general", icon: str = "🤖",
+               tools: List[str] = None) -> Dict[str, Any]:
+        result = create_custom_agent(name, user_id, system_prompt, category, icon, tools)
+        if result.get("success") and result.get("agent"):
+            result["agent_id"] = result["agent"]["id"]
+        return result
+
+    def list(self, user_id: str) -> List[Dict]:
+        return list_custom_agents(user_id)
+
+    def get(self, agent_id: str) -> Optional[Dict]:
+        return get_custom_agent(agent_id)
+
+    def delete(self, agent_id: str) -> Dict[str, Any]:
+        return delete_custom_agent(agent_id)
+
+
+class TemplateManager:
+    """OOP wrapper around template functions."""
+
+    def list_templates(self, category: str = None) -> List[Dict]:
+        return get_templates(category)
+
+    def get_template(self, template_id: str) -> Optional[Dict]:
+        templates = get_templates()
+        for t in templates:
+            if t.get("id") == template_id:
+                return t
+        return None

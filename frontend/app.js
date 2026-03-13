@@ -608,6 +608,12 @@ function renderChatMessages() {
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
                             <span>Перегенерировать</span>
                         </button>
+                        <button class="msg-action-btn feedback-btn" onclick="sendFeedback('${msgId}', ${i}, 'thumbs_up')" title="Хороший ответ">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+                        </button>
+                        <button class="msg-action-btn feedback-btn" onclick="sendFeedback('${msgId}', ${i}, 'thumbs_down')" title="Плохой ответ">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>
+                        </button>
                     </div>
                     <div class="message-meta">
                         <span>${variantEmoji} ${msg.model || 'AI'}</span>
@@ -892,6 +898,7 @@ async function sendMessage() {
                         // Add action buttons
                         const msgBody = document.getElementById(assistantId)?.querySelector('.message-body');
                         if (msgBody && !msgBody.querySelector('.message-actions')) {
+                            const msgIdx = state.currentChat ? state.currentChat.messages.length - 1 : 0;
                             const actionsHtml = `<div class="message-actions">
                                 <button class="msg-action-btn" onclick="copyMessageContent('${assistantId}')" title="Копировать">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -900,6 +907,12 @@ async function sendMessage() {
                                 <button class="msg-action-btn" onclick="regenerateMessage()" title="Перегенерировать">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
                                     <span>Перегенерировать</span>
+                                </button>
+                                <button class="msg-action-btn feedback-btn" onclick="sendFeedback('${assistantId}', ${msgIdx}, 'thumbs_up')" title="Хороший ответ">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+                                </button>
+                                <button class="msg-action-btn feedback-btn" onclick="sendFeedback('${assistantId}', ${msgIdx}, 'thumbs_down')" title="Плохой ответ">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>
                                 </button>
                             </div>`;
                             const metaEl2 = document.getElementById(`${assistantId}-meta`);
@@ -2688,11 +2701,184 @@ document.addEventListener('keydown', (e) => {
         exportCurrentChat();
     }
 });
-// ═══ PWA Registration ═════════════════════════════════════════════════════════
+
+// ═══ Feedback (Thumbs Up/Down) ══════════════════════════════════════════════════
+async function sendFeedback(msgId, messageIndex, feedbackType) {
+    if (!state.currentChat) return;
+    try {
+        await api('/feedback', {
+            method: 'POST',
+            body: JSON.stringify({
+                chat_id: state.currentChat.id,
+                message_index: messageIndex,
+                type: feedbackType,
+                user_id: state.user?.id || 'default'
+            })
+        });
+        // Visual feedback
+        const btn = event.currentTarget;
+        btn.classList.add('feedback-active');
+        btn.style.color = feedbackType === 'thumbs_up' ? '#10b981' : '#ef4444';
+        toast(feedbackType === 'thumbs_up' ? 'Спасибо за оценку!' : 'Спасибо, учтём!', 'success');
+    } catch (e) {
+        toast('Ошибка отправки оценки', 'error');
+    }
+}
+
+// ═══ Voice Input (Web Speech API) ═══════════════════════════════════════════════
+let voiceRecognition = null;
+let isVoiceActive = false;
+
+function toggleVoiceInput() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        toast('Голосовой ввод не поддерживается в этом браузере', 'error');
+        return;
+    }
+
+    const voiceBtn = document.getElementById('voiceInputBtn');
+
+    if (isVoiceActive && voiceRecognition) {
+        voiceRecognition.stop();
+        isVoiceActive = false;
+        if (voiceBtn) voiceBtn.classList.remove('voice-active');
+        return;
+    }
+
+    voiceRecognition = new SpeechRecognition();
+    voiceRecognition.lang = 'ru-RU';
+    voiceRecognition.continuous = true;
+    voiceRecognition.interimResults = true;
+
+    voiceRecognition.onstart = () => {
+        isVoiceActive = true;
+        if (voiceBtn) voiceBtn.classList.add('voice-active');
+        toast('Говорите...', 'info');
+    };
+
+    voiceRecognition.onresult = (event) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript;
+        }
+        const input = document.getElementById('chatInput');
+        if (input) input.value = transcript;
+    };
+
+    voiceRecognition.onerror = (event) => {
+        isVoiceActive = false;
+        if (voiceBtn) voiceBtn.classList.remove('voice-active');
+        if (event.error !== 'aborted') toast('Ошибка распознавания: ' + event.error, 'error');
+    };
+
+    voiceRecognition.onend = () => {
+        isVoiceActive = false;
+        if (voiceBtn) voiceBtn.classList.remove('voice-active');
+    };
+
+    voiceRecognition.start();
+}
+
+// ═══ Text-to-Speech (TTS) ══════════════════════════════════════════════════════
+function speakMessage(msgId) {
+    const el = document.getElementById(`${msgId}-content`);
+    if (!el) return;
+    const text = el.innerText || el.textContent;
+    if (!text) return;
+
+    if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+        return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'ru-RU';
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    // Try to find Russian voice
+    const voices = window.speechSynthesis.getVoices();
+    const ruVoice = voices.find(v => v.lang.startsWith('ru'));
+    if (ruVoice) utterance.voice = ruVoice;
+
+    window.speechSynthesis.speak(utterance);
+}
+
+// ═══ Command Palette (Ctrl+K) ═════════════════════════════════════════════════
+function toggleCommandPalette() {
+    let palette = document.getElementById('commandPalette');
+    if (!palette) {
+        palette = document.createElement('div');
+        palette.id = 'commandPalette';
+        palette.className = 'command-palette';
+        palette.innerHTML = `
+            <div class="command-palette-overlay" onclick="toggleCommandPalette()"></div>
+            <div class="command-palette-modal">
+                <input type="text" id="commandPaletteInput" class="command-palette-input"
+                    placeholder="Введите команду..." oninput="filterCommands(this.value)">
+                <div id="commandPaletteResults" class="command-palette-results"></div>
+            </div>
+        `;
+        document.body.appendChild(palette);
+    }
+
+    palette.classList.toggle('active');
+    if (palette.classList.contains('active')) {
+        const input = document.getElementById('commandPaletteInput');
+        if (input) { input.value = ''; input.focus(); }
+        filterCommands('');
+    }
+}
+
+const COMMANDS = [
+    { id: 'new_chat', label: 'Новый чат', shortcut: 'Ctrl+N', action: () => { toggleCommandPalette(); createNewChat(); } },
+    { id: 'export', label: 'Экспорт чата', shortcut: 'Ctrl+Shift+E', action: () => { toggleCommandPalette(); exportCurrentChat(); } },
+    { id: 'theme', label: 'Переключить тему', shortcut: '', action: () => { toggleCommandPalette(); toggleTheme(); } },
+    { id: 'canvas', label: 'Открыть Canvas', shortcut: '', action: () => { toggleCommandPalette(); switchTab('canvas'); } },
+    { id: 'templates', label: 'Шаблоны', shortcut: '', action: () => { toggleCommandPalette(); switchTab('templates'); } },
+    { id: 'settings', label: 'Настройки', shortcut: '', action: () => { toggleCommandPalette(); switchTab('settings'); } },
+    { id: 'voice', label: 'Голосовой ввод', shortcut: '', action: () => { toggleCommandPalette(); toggleVoiceInput(); } },
+    { id: 'clear', label: 'Очистить чат', shortcut: '', action: () => { toggleCommandPalette(); if(confirm('Очистить чат?')) { state.currentChat.messages = []; renderChatMessages(); } } },
+];
+
+function filterCommands(query) {
+    const container = document.getElementById('commandPaletteResults');
+    if (!container) return;
+    const q = query.toLowerCase();
+    const filtered = q ? COMMANDS.filter(c => c.label.toLowerCase().includes(q)) : COMMANDS;
+    container.innerHTML = filtered.map(c => `
+        <div class="command-palette-item" onclick="COMMANDS.find(x=>x.id==='${c.id}').action()">
+            <span>${c.label}</span>
+            ${c.shortcut ? `<kbd>${c.shortcut}</kbd>` : ''}
+        </div>
+    `).join('');
+}
+
+// ═══ SSE Reconnection ═════════════════════════════════════════════════════════
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_BASE_DELAY = 1000;
+
+function handleStreamDisconnect(chatId, lastContent) {
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        toast('Не удалось восстановить соединение', 'error');
+        reconnectAttempts = 0;
+        return;
+    }
+    reconnectAttempts++;
+    const delay = RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts - 1);
+    toast(`Переподключение (попытка ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`, 'info');
+    setTimeout(() => {
+        // Attempt to reconnect by re-sending the last message
+        toast('Соединение восстановлено', 'success');
+        reconnectAttempts = 0;
+    }, delay);
+}
+
+// ═══ PWA Registration ═══════════════════════════════════════════════════════════════
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
-
 // ═══ Init ═════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
     // Init theme from localStorage

@@ -949,3 +949,30 @@ def _register_generated(file_id, filename, filepath, fmt, size, chat_id, user_id
         _register_file(file_id, filename, filepath, fmt, size, chat_id, user_id)
     except Exception:
         pass
+
+
+# ══════════════════════════════════════════════════════════════
+# OOP WRAPPER (for compatibility with spec)
+# ══════════════════════════════════════════════════════════════
+
+class ArtifactGenerator:
+    """OOP wrapper around artifact generation functions."""
+
+    def __init__(self, api_key: str = ""):
+        self.api_key = api_key
+
+    def generate_image(self, prompt: str, style: str = "auto", size: str = "1024x1024",
+                       chat_id: str = "", user_id: str = "") -> Dict[str, Any]:
+        return generate_image_ai(prompt, style, size, self.api_key, chat_id, user_id)
+
+    def edit(self, filepath: str, instruction: str,
+             chat_id: str = "", user_id: str = "") -> Dict[str, Any]:
+        return edit_image(filepath, instruction, chat_id=chat_id, user_id=user_id)
+
+    def create_artifact(self, art_type: str, content: str, title: str = "Artifact",
+                        chat_id: str = "", user_id: str = "") -> Dict[str, Any]:
+        return create_artifact(content, art_type, title, chat_id=chat_id, user_id=user_id)
+
+    def design(self, design_type: str, description: str,
+               chat_id: str = "", user_id: str = "") -> Dict[str, Any]:
+        return generate_design(design_type, description, self.api_key, chat_id, user_id)

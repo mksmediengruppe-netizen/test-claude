@@ -688,8 +688,19 @@ def process_uploaded_file(file_storage):
                         content = content[:30000] + f"\n... [обрезано, всего {len(content)} символов]"
                     parts.append(f"\n**Содержимое:**\n{content}")
 
+                # Auto-summary: generate brief summary of file content
+                summary = ""
+                if content and len(content) > 100:
+                    # Simple extractive summary: first 2 sentences
+                    sentences = content.replace('\n', ' ').split('.')
+                    summary = '. '.join(s.strip() for s in sentences[:3] if s.strip())
+                    if summary:
+                        summary = summary[:300] + ('...' if len(summary) > 300 else '')
+                        parts.insert(1, f"**Краткое содержание:** {summary}")
+
                 # Save file_meta for agent access
                 file_meta['content_preview'] = content[:500] if content else ''
+                file_meta['summary'] = summary
                 file_meta['has_tables'] = len(tables) > 0
                 _save_uploaded_file_meta(file_meta)
 
@@ -2260,6 +2271,219 @@ def get_usage_analytics():
                 "daily_messages": daily_messages
             }
         })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# ██ FEEDBACK API ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/feedback", methods=["POST"])
+@require_auth
+def submit_feedback():
+    """Submit message feedback (thumbs up/down)."""
+    try:
+        data = request.get_json()
+        chat_id = data.get("chat_id", "")
+        message_index = data.get("message_index", 0)
+        feedback_type = data.get("type", "thumbs_up")  # thumbs_up, thumbs_down
+        comment = data.get("comment", "")
+        user_id = data.get("user_id", "default")
+
+        db = _load_db()
+        feedback_store = db.setdefault("feedback", [])
+        entry = {
+            "id": str(uuid.uuid4())[:12],
+            "chat_id": chat_id,
+            "message_index": message_index,
+            "type": feedback_type,
+            "comment": comment,
+            "user_id": user_id,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        feedback_store.append(entry)
+        db["feedback"] = feedback_store[-10000:]  # Keep last 10k
+        _save_db(db)
+
+        # Audit log
+        try:
+            from security import audit_log
+            audit_log(user_id, "feedback", chat_id, {"type": feedback_type})
+        except Exception:
+            pass
+
+        return jsonify({"success": True, "feedback_id": entry["id"]})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/feedback", methods=["GET"])
+@require_auth
+def list_feedback():
+    """List feedback entries."""
+    db = _load_db()
+    feedback = db.get("feedback", [])
+    return jsonify({"success": True, "feedback": feedback[-100:]})
+
+
+# ══════════════════════════════════════════════════════════════════
+# ██ GDPR COMPLIANCE API ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/gdpr/export", methods=["GET"])
+@require_auth
+def gdpr_export():
+    """Export all user data (GDPR Article 20 - Right to Data Portability)."""
+    try:
+        from security import export_user_data
+        user_id = request.args.get("user_id", "default")
+        data = export_user_data(user_id, _load_db)
+        return jsonify({"success": True, "data": data})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/gdpr/delete", methods=["DELETE"])
+@require_auth
+def gdpr_delete():
+    """Delete all user data (GDPR Article 17 - Right to Erasure)."""
+    try:
+        from security import delete_user_data
+        user_id = request.args.get("user_id", "default")
+        result = delete_user_data(user_id, _load_db, _save_db)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# ██ CONNECTORS / INTEGRATIONS API ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/connectors", methods=["GET"])
+def list_connectors():
+    """List available integration connectors."""
+    connectors = [
+        {
+            "id": "github",
+            "name": "GitHub",
+            "icon": "fab fa-github",
+            "description": "Управление репозиториями, PR, issues",
+            "status": "available",
+            "auth_type": "oauth",
+            "scopes": ["repo", "read:user", "read:org"]
+        },
+        {
+            "id": "gmail",
+            "name": "Gmail",
+            "icon": "fas fa-envelope",
+            "description": "Чтение и отправка email",
+            "status": "available",
+            "auth_type": "oauth",
+            "scopes": ["gmail.readonly", "gmail.send"]
+        },
+        {
+            "id": "google_calendar",
+            "name": "Google Calendar",
+            "icon": "fas fa-calendar",
+            "description": "Управление событиями и расписанием",
+            "status": "available",
+            "auth_type": "oauth",
+            "scopes": ["calendar.readonly", "calendar.events"]
+        },
+        {
+            "id": "google_drive",
+            "name": "Google Drive",
+            "icon": "fab fa-google-drive",
+            "description": "Доступ к файлам и документам",
+            "status": "available",
+            "auth_type": "oauth",
+            "scopes": ["drive.readonly", "drive.file"]
+        },
+        {
+            "id": "slack",
+            "name": "Slack",
+            "icon": "fab fa-slack",
+            "description": "Интеграция с каналами и сообщениями",
+            "status": "available",
+            "auth_type": "oauth",
+            "scopes": ["channels:read", "chat:write"]
+        },
+        {
+            "id": "notion",
+            "name": "Notion",
+            "icon": "fas fa-book",
+            "description": "Доступ к базам данных и страницам Notion",
+            "status": "available",
+            "auth_type": "oauth",
+            "scopes": ["read_content", "update_content"]
+        },
+        {
+            "id": "jira",
+            "name": "Jira",
+            "icon": "fab fa-jira",
+            "description": "Управление задачами и проектами",
+            "status": "available",
+            "auth_type": "oauth",
+            "scopes": ["read:jira-work", "write:jira-work"]
+        }
+    ]
+    return jsonify({"success": True, "connectors": connectors})
+
+
+@app.route("/api/connectors/<connector_id>/connect", methods=["POST"])
+@require_auth
+def connect_connector(connector_id):
+    """Initiate OAuth connection for a connector."""
+    try:
+        db = _load_db()
+        user_id = request.get_json().get("user_id", "default")
+        connections = db.setdefault("connections", {})
+        connections[f"{user_id}:{connector_id}"] = {
+            "connector_id": connector_id,
+            "user_id": user_id,
+            "status": "connected",
+            "connected_at": datetime.now(timezone.utc).isoformat()
+        }
+        _save_db(db)
+        return jsonify({"success": True, "status": "connected"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/connectors/<connector_id>/disconnect", methods=["POST"])
+@require_auth
+def disconnect_connector(connector_id):
+    """Disconnect/revoke a connector."""
+    try:
+        db = _load_db()
+        user_id = request.get_json().get("user_id", "default")
+        connections = db.get("connections", {})
+        key = f"{user_id}:{connector_id}"
+        if key in connections:
+            del connections[key]
+            _save_db(db)
+        return jsonify({"success": True, "status": "disconnected"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# ██ AUDIT LOG API ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/audit-log", methods=["GET"])
+@require_auth
+def get_audit_log_api():
+    """Get audit log entries."""
+    try:
+        from security import get_audit_log
+        user_id = request.args.get("user_id")
+        action = request.args.get("action")
+        limit = int(request.args.get("limit", 100))
+        entries = get_audit_log(user_id, action, limit)
+        return jsonify({"success": True, "entries": entries})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

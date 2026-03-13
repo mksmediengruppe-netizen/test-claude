@@ -382,6 +382,7 @@ def detect_prompt_injection(text: str) -> Dict[str, Any]:
 
     return {
         "safe": safe,
+        "is_suspicious": not safe,
         "risk_level": risk_level,
         "risk_score": risk_score,
         "patterns_found": patterns_found
@@ -562,3 +563,57 @@ def verify_password(password: str, stored_hash: str) -> bool:
     salt, expected_hash = stored_hash.split(':', 1)
     actual_hash = hashlib.sha256(f"{salt}:{password}".encode()).hexdigest()
     return hmac.compare_digest(actual_hash, expected_hash)
+
+
+# ══════════════════════════════════════════════════════════════
+# INPUT SANITIZATION
+# ══════════════════════════════════════════════════════════════
+
+def sanitize_input(text: str, max_length: int = 50000) -> str:
+    """
+    Sanitize user input: strip control characters, limit length,
+    remove null bytes, normalize whitespace.
+    """
+    if not isinstance(text, str):
+        text = str(text)
+
+    # Remove null bytes
+    text = text.replace('\x00', '')
+
+    # Remove other control characters (except newline, tab, carriage return)
+    text = re.sub(r'[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+
+    # Normalize excessive whitespace (more than 3 consecutive newlines)
+    text = re.sub(r'\n{4,}', '\n\n\n', text)
+
+    # Limit length
+    if len(text) > max_length:
+        text = text[:max_length] + "... [truncated]"
+
+    return text.strip()
+
+
+def validate_file_upload(filename: str, file_size: int,
+                         max_size: int = 50 * 1024 * 1024,
+                         allowed_extensions: list = None) -> Dict[str, Any]:
+    """
+    Validate an uploaded file.
+    Returns: {valid: bool, error: str or None}
+    """
+    if not filename:
+        return {"valid": False, "error": "No filename provided"}
+
+    # Check file size
+    if file_size > max_size:
+        return {"valid": False, "error": f"File too large: {file_size} bytes (max {max_size})"}
+
+    # Check extension
+    ext = os.path.splitext(filename)[1].lower()
+    if allowed_extensions and ext not in allowed_extensions:
+        return {"valid": False, "error": f"File type not allowed: {ext}"}
+
+    # Check for path traversal
+    if '..' in filename or '/' in filename or '\\' in filename:
+        return {"valid": False, "error": "Invalid filename (path traversal detected)"}
+
+    return {"valid": True, "error": None}

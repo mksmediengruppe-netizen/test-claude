@@ -1302,6 +1302,18 @@ class AgentLoop:
         GENERATED_DIR = os.environ.get("GENERATED_DIR", "/var/www/super-agent/backend/generated")
         os.makedirs(GENERATED_DIR, exist_ok=True)
         
+        # Security: check for forbidden/dangerous operations
+        FORBIDDEN_PATTERNS = [
+            'os.system(', 'subprocess.call(', 'subprocess.Popen(',
+            'shutil.rmtree(', '__import__(\'os\').system',
+            'eval(', 'exec(', 'compile(',
+            'open(\'/etc', 'open(\"/etc',
+            'rm -rf', 'chmod 777', 'curl ', 'wget ',
+        ]
+        for pattern in FORBIDDEN_PATTERNS:
+            if pattern in code:
+                return {"success": False, "error": f"Security: forbidden operation detected: {pattern}"}
+        
         # Create temp file with the code
         code_file = os.path.join(GENERATED_DIR, f"code_{_uuid.uuid4().hex[:8]}.py")
         

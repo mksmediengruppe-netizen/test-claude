@@ -391,3 +391,30 @@ def clear_search_cache():
     """Clear the search cache."""
     global _search_cache
     _search_cache = {}
+
+
+# ══════════════════════════════════════════════════════════════
+# OOP WRAPPERS (for compatibility with spec)
+# ══════════════════════════════════════════════════════════════
+
+class WebSearcher:
+    """OOP wrapper around web_search function."""
+
+    def __init__(self, default_engine: str = "duckduckgo"):
+        self.default_engine = default_engine
+
+    def search(self, query: str, num_results: int = 8, search_type: str = "general") -> Dict[str, Any]:
+        return web_search(query, num_results, search_type)
+
+    def needs_search(self, query: str) -> bool:
+        return needs_search(query)
+
+
+class WebFetcher:
+    """OOP wrapper around web_fetch function."""
+
+    def __init__(self, max_length: int = 15000):
+        self.max_length = max_length
+
+    def fetch(self, url: str, max_length: int = None) -> Dict[str, Any]:
+        return web_fetch(url, max_length or self.max_length)

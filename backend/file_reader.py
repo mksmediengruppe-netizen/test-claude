@@ -86,6 +86,18 @@ except ImportError:
     pass
 
 
+# Supported file extensions
+SUPPORTED_EXTENSIONS = {
+    '.pdf', '.docx', '.doc', '.pptx', '.xlsx', '.xls',
+    '.csv', '.tsv', '.json', '.xml',
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg',
+    '.zip', '.tar', '.gz', '.tgz',
+    '.txt', '.md', '.rst', '.rtf',
+    '.py', '.js', '.ts', '.html', '.css', '.sql', '.sh', '.yaml', '.toml', '.ini',
+    '.mp3', '.wav', '.mp4', '.webm', '.ogg',
+}
+
+
 class FileReadResult:
     """Result of reading a file."""
 
@@ -100,6 +112,14 @@ class FileReadResult:
         self.pages_count = 0
         self.error = None
         self.children = []  # For archives
+
+    @property
+    def success(self):
+        return self.error is None
+
+    @property
+    def content(self):
+        return self.text
 
     def to_dict(self):
         result = {
