@@ -1,7 +1,8 @@
 """
-Super Agent v4.0 — Backend API Server
+Super Agent v5.0 — Backend API Server
 Автономный AI-инженер с мультиагентной системой, SSH executor,
-browser agent, долговременной памятью, админ-панелью и аналитикой.
+browser agent, долговременной памятью, file versioning, rate limiting,
+contracts validation, self-healing 2.0, LangGraph StateGraph.
 """
 
 import os
@@ -28,6 +29,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from agent_loop import AgentLoop, MultiAgentLoop
 from ssh_executor import SSHExecutor, ssh_pool
 from browser_agent import BrowserAgent
+from memory import get_memory, MemoryEntry, MemoryType
+from file_versioning import get_version_store
+from rate_limiter import get_rate_limiter, ToolContracts
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
@@ -48,6 +52,29 @@ _lock = threading.Lock()
 # Active agent loops (for stop functionality)
 _active_agents = {}
 _agents_lock = threading.Lock()
+
+# Singletons for new modules
+_vector_memory = None
+_version_store = None
+_rate_limiter = None
+
+def _get_memory():
+    global _vector_memory
+    if _vector_memory is None:
+        _vector_memory = get_memory()
+    return _vector_memory
+
+def _get_versions():
+    global _version_store
+    if _version_store is None:
+        _version_store = get_version_store()
+    return _version_store
+
+def _get_rate_limiter():
+    global _rate_limiter
+    if _rate_limiter is None:
+        _rate_limiter = get_rate_limiter()
+    return _rate_limiter
 
 # ── Model Configurations ──────────────────────────────────────
 MODEL_CONFIGS = {
@@ -716,7 +743,17 @@ def _parse_ssh_from_message(message):
 @app.route("/api/chats/<chat_id>/send", methods=["POST"])
 @require_auth
 def send_message(chat_id):
-    """Send message and get AI response via SSE streaming with agent loop."""
+    "Send message and get AI response via SSE streaming with agent loop."
+    # Rate limiting check
+    rl = _get_rate_limiter()
+    allowed, rl_info = rl.check_message(request.user_id)
+    if not allowed:
+        return jsonify({
+            "error": "Rate limit exceeded",
+            "retry_after": rl_info.get("retry_after", 60),
+            "remaining": 0
+        }), 429
+
     db = db_read()
     chat = db["chats"].get(chat_id)
     if not chat or chat.get("user_id") != request.user_id:
@@ -1032,7 +1069,7 @@ def send_message(chat_id):
         analytics["daily_stats"] = daily
         db2["analytics"] = analytics
 
-        # Save memory (episodic)
+        # Save memory (episodic) — legacy JSON memory
         memory = db2.get("memory", {"episodic": [], "semantic": {}, "procedural": {}})
         memory["episodic"].append({
             "task": user_message[:200],
@@ -1048,6 +1085,18 @@ def send_message(chat_id):
         if len(memory["episodic"]) > 1000:
             memory["episodic"] = memory["episodic"][-1000:]
         db2["memory"] = memory
+
+        # Save to vector memory (long-term, cross-chat)
+        try:
+            vmem = _get_memory()
+            vmem.store_from_conversation(
+                user_message=user_message,
+                assistant_response=full_response[:500],
+                chat_id=chat_id,
+                user_id=request.user_id
+            )
+        except Exception:
+            pass  # Non-critical
 
         db_write(db2)
 
@@ -1468,23 +1517,159 @@ def admin_stats():
 @app.route("/api/memory/search", methods=["POST"])
 @require_auth
 def search_memory():
-    """Search episodic memory for similar tasks."""
+    """Search memory — both legacy episodic and vector memory."""
     data = request.get_json() or {}
     query = data.get("query", "").lower()
     limit = data.get("limit", 5)
 
+    # Legacy episodic search
     db = db_read()
     episodes = db.get("memory", {}).get("episodic", [])
-
-    results = []
+    legacy_results = []
     for ep in reversed(episodes):
         task = ep.get("task", "").lower()
         score = sum(1 for word in query.split() if word in task)
         if score > 0:
-            results.append({**ep, "relevance": score})
+            legacy_results.append({**ep, "relevance": score, "source": "episodic"})
+    legacy_results.sort(key=lambda x: x["relevance"], reverse=True)
 
-    results.sort(key=lambda x: x["relevance"], reverse=True)
-    return jsonify({"results": results[:limit]})
+    # Vector memory search (cross-chat)
+    vector_results = []
+    try:
+        vmem = _get_memory()
+        vector_results = vmem.search(query, limit=limit, user_id=request.user_id)
+        for vr in vector_results:
+            vr["source"] = "vector"
+    except Exception:
+        pass
+
+    return jsonify({
+        "results": legacy_results[:limit],
+        "vector_results": vector_results[:limit]
+    })
+
+
+@app.route("/api/memory/context", methods=["POST"])
+@require_auth
+def get_memory_context():
+    """Get relevant memory context for a query (cross-chat learning)."""
+    data = request.get_json() or {}
+    query = data.get("query", "")
+    if not query:
+        return jsonify({"context": ""})
+
+    try:
+        vmem = _get_memory()
+        context = vmem.get_relevant_context(query, user_id=request.user_id)
+        return jsonify({"context": context})
+    except Exception as e:
+        return jsonify({"context": "", "error": str(e)})
+
+
+@app.route("/api/memory/stats", methods=["GET"])
+@require_auth
+def memory_stats():
+    """Get memory statistics."""
+    try:
+        vmem = _get_memory()
+        return jsonify(vmem.get_stats())
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
+# ── File Versioning API ─────────────────────────────────────────────
+@app.route("/api/versions/files", methods=["GET"])
+@require_auth
+def list_versioned_files():
+    """List all versioned files."""
+    host = request.args.get("host", None)
+    try:
+        store = _get_versions()
+        files = store.get_all_files(host=host)
+        return jsonify({"files": files})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/versions/history", methods=["GET"])
+@require_auth
+def file_version_history():
+    """Get version history for a file."""
+    host = request.args.get("host", "")
+    path = request.args.get("path", "")
+    if not host or not path:
+        return jsonify({"error": "host and path required"}), 400
+
+    try:
+        store = _get_versions()
+        history = store.get_history(host, path)
+        return jsonify({"history": history})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/versions/diff", methods=["GET"])
+@require_auth
+def file_version_diff():
+    """Get diff between two versions."""
+    host = request.args.get("host", "")
+    path = request.args.get("path", "")
+    v_from = int(request.args.get("from", 0))
+    v_to = int(request.args.get("to", 0))
+
+    if not host or not path or not v_from or not v_to:
+        return jsonify({"error": "host, path, from, to required"}), 400
+
+    try:
+        store = _get_versions()
+        diff = store.get_diff(host, path, v_from, v_to)
+        return jsonify({"diff": diff})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/versions/rollback", methods=["POST"])
+@require_auth
+def file_version_rollback():
+    """Rollback a file to a previous version."""
+    data = request.get_json() or {}
+    host = data.get("host", "")
+    path = data.get("path", "")
+    version = data.get("version", 0)
+
+    if not host or not path or not version:
+        return jsonify({"error": "host, path, version required"}), 400
+
+    try:
+        store = _get_versions()
+        result = store.rollback(host, path, version)
+        if result:
+            return jsonify({"ok": True, "result": result})
+        return jsonify({"error": "Version not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/versions/stats", methods=["GET"])
+@require_auth
+def file_version_stats():
+    """Get file versioning statistics."""
+    try:
+        store = _get_versions()
+        return jsonify(store.get_stats())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Rate Limiting API ──────────────────────────────────────────────
+@app.route("/api/rate-limit/status", methods=["GET"])
+@require_auth
+def rate_limit_status():
+    """Get current rate limit status for user."""
+    rl = _get_rate_limiter()
+    ip = request.remote_addr or "unknown"
+    usage = rl.get_all_usage(user_id=request.user_id, ip=ip)
+    return jsonify(usage)
 
 
 # ── Export ─────────────────────────────────────────────────────
@@ -1538,11 +1723,31 @@ def export_chat(chat_id):
 # ── Health Check ───────────────────────────────────────────────
 @app.route("/api/health", methods=["GET"])
 def health():
+    # Get stats from new modules
+    mem_stats = {}
+    ver_stats = {}
+    try:
+        mem_stats = _get_memory().get_stats()
+    except Exception:
+        pass
+    try:
+        ver_stats = _get_versions().get_stats()
+    except Exception:
+        pass
+
     return jsonify({
         "status": "ok",
-        "version": "4.0",
+        "version": "5.0",
         "name": "Super Agent",
-        "features": ["ssh_executor", "file_manager", "browser_agent", "agent_loop", "multi_agent"],
+        "features": [
+            "langgraph_stategraph", "retry_policy", "idempotency",
+            "self_healing_2.0", "vector_memory", "file_versioning",
+            "rate_limiting", "contracts", "cross_chat_learning",
+            "ssh_executor", "file_manager", "browser_agent",
+            "agent_loop", "multi_agent"
+        ],
+        "memory": mem_stats,
+        "versioning": ver_stats,
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
 

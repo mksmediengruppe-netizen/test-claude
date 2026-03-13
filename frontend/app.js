@@ -1,6 +1,6 @@
 /**
- * Super Agent v4.0 — Frontend Application
- * Автономный AI-инженер с мультиагентной системой
+ * Super Agent v5.0 — Frontend Application
+ * LangGraph StateGraph + Self-Healing 2.0 + Vector Memory + File Versioning
  */
 
 // ═══ State ═══════════════════════════════════════════════════
@@ -835,6 +835,15 @@ async function sendMessage() {
                         }
                     }
 
+                    // ═══ Self-Healing Events ═══
+                    if (event.type === 'self_heal') {
+                        addAgentAction(assistantId, `<div class="agent-self-heal">
+                            <span class="heal-icon">🛡️</span>
+                            <span class="heal-text"><strong>Self-Healing</strong> (попытка ${event.attempt}/${event.max_attempts}): ${escapeHtml(event.fix_description || '')}</span>
+                            <span class="heal-badge">${event.fixes_count} вариантов</span>
+                        </div>`);
+                    }
+
                     if (event.type === 'task_complete') {
                         addAgentAction(assistantId, `<div class="agent-task-complete">
                             🎉 <strong>Задача выполнена!</strong> ${escapeHtml(event.summary || '')}
@@ -1663,7 +1672,7 @@ function switchPreviewTab(tab) {
         placeholder.classList.remove('hidden');
         placeholder.innerHTML = `<div class="preview-console">
             <div class="console-line success"><span class="prefix">></span> Консоль готова</div>
-            <div class="console-line info"><span class="prefix">✓</span> Super Agent v4.0 активен</div>
+            <div class="console-line info"><span class="prefix">✓</span> Super Agent v5.0 активен</div>
         </div>`;
     }
 }
@@ -1725,6 +1734,8 @@ function switchTab(tab) {
     // Show/hide panels
     document.getElementById('tabChat').classList.toggle('hidden', tab !== 'chat');
     document.getElementById('tabSettings').classList.toggle('hidden', tab !== 'settings');
+    document.getElementById('tabMemory')?.classList.toggle('hidden', tab !== 'memory');
+    document.getElementById('tabVersions')?.classList.toggle('hidden', tab !== 'versions');
     document.getElementById('tabAnalytics').classList.toggle('hidden', tab !== 'analytics');
     document.getElementById('tabAdmin').classList.toggle('hidden', tab !== 'admin');
     const modelBar = document.getElementById('modelSelectorBar') || document.getElementById('modelChipsBar');
@@ -1734,6 +1745,8 @@ function switchTab(tab) {
     if (tab === 'analytics') loadAnalytics();
     if (tab === 'admin') loadAdmin();
     if (tab === 'settings') updateSettingsCards();
+    if (tab === 'memory') loadMemoryTab();
+    if (tab === 'versions') loadVersionsTab();
 }
 
 function toggleSidebar() {
@@ -2000,11 +2013,216 @@ function toast(message, type = 'info') {
         el.style.transform = 'translateX(100%)';
         setTimeout(() => el.remove(), 300);
     }, 3000);
+}// ═══ Memory Tab ═══════════════════════════════════════════════════
+async function loadMemoryTab() {
+    try {
+        const [statsData, searchData] = await Promise.all([
+            api('/memory/stats').catch(() => ({})),
+            api('/memory/search', { method: 'POST', body: JSON.stringify({ query: '', limit: 10 }) }).catch(() => ({ results: [] }))
+        ]);
+
+        // Render stats
+        const statsEl = document.getElementById('memoryStats');
+        if (statsEl) {
+            statsEl.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-card-value">${statsData.total_entries || 0}</div>
+                    <div class="stat-card-label">Всего записей</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-value">${statsData.total_tasks || 0}</div>
+                    <div class="stat-card-label">Задач</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-value">${statsData.total_solutions || 0}</div>
+                    <div class="stat-card-label">Решений</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-value">${statsData.total_errors || 0}</div>
+                    <div class="stat-card-label">Ошибок</div>
+                </div>
+            `;
+        }
+
+        // Render recent episodes
+        const episodesEl = document.getElementById('memoryEpisodes');
+        if (episodesEl && searchData.results) {
+            if (searchData.results.length === 0) {
+                episodesEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted)">Память пуста. Начните работу с агентом!</div>';
+            } else {
+                episodesEl.innerHTML = searchData.results.map(ep => `
+                    <div class="settings-card" style="cursor:default;margin-bottom:8px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                            <strong style="font-size:13px;">${escapeHtml(ep.task || '')}</strong>
+                            <span style="font-size:11px;color:var(--text-muted);">${ep.timestamp ? formatTime(ep.timestamp) : ''}</span>
+                        </div>
+                        <div style="font-size:12px;color:var(--text-secondary);">${escapeHtml((ep.result_preview || '').substring(0, 100))}</div>
+                        <div style="display:flex;gap:8px;margin-top:4px;font-size:11px;">
+                            <span style="color:${ep.success ? 'var(--accent-green)' : 'var(--accent-red)'}">${ep.success ? '✅ Успешно' : '❌ Ошибка'}</span>
+                            <span style="color:var(--text-muted)">$${(ep.cost || 0).toFixed(4)}</span>
+                            <span style="color:var(--text-muted)">${ep.variant || ''}</span>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+    } catch (e) {
+        console.error('Memory tab error:', e);
+    }
 }
 
-// ═══ Init ═══════════════════════════════════════════════════
-document.addEventListener('DOMContentLoaded', () => {
-    // Init theme from localStorage
+async function searchMemory() {
+    const query = document.getElementById('memorySearchQuery')?.value?.trim();
+    if (!query) { toast('Введите запрос для поиска', 'info'); return; }
+
+    const resultsEl = document.getElementById('memorySearchResults');
+    resultsEl.style.display = 'block';
+    resultsEl.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-muted)">🔍 Поиск...</div>';
+
+    try {
+        const data = await api('/memory/search', {
+            method: 'POST',
+            body: JSON.stringify({ query, limit: 10 })
+        });
+
+        const allResults = [...(data.results || []), ...(data.vector_results || [])];
+        if (allResults.length === 0) {
+            resultsEl.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-muted)">Ничего не найдено</div>';
+            return;
+        }
+
+        resultsEl.innerHTML = allResults.map(r => `
+            <div style="padding:8px;border-bottom:1px solid var(--border-color);">
+                <div style="font-size:13px;font-weight:600;">${escapeHtml(r.task || r.content || '')}</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${escapeHtml((r.result_preview || '').substring(0, 150))}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">
+                    Источник: ${r.source || 'episodic'} • Релевантность: ${r.relevance || r.score || '?'}
+                </div>
+            </div>
+        `).join('');
+    } catch (e) {
+        resultsEl.innerHTML = `<div style="color:var(--accent-red);padding:8px;">Ошибка: ${e.message}</div>`;
+    }
+}
+
+// ═══ Versions Tab ═════════════════════════════════════════════════
+async function loadVersionsTab() {
+    try {
+        const [filesData, statsData] = await Promise.all([
+            api('/versions/files').catch(() => ({ files: [] })),
+            api('/versions/stats').catch(() => ({}))
+        ]);
+
+        // Render stats
+        const statsEl = document.getElementById('versionStats');
+        if (statsEl) {
+            statsEl.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-card-value">${statsData.total_files || 0}</div>
+                    <div class="stat-card-label">Файлов</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-value">${statsData.total_versions || 0}</div>
+                    <div class="stat-card-label">Версий</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-value">${statsData.total_rollbacks || 0}</div>
+                    <div class="stat-card-label">Откатов</div>
+                </div>
+            `;
+        }
+
+        // Render files list
+        const filesEl = document.getElementById('versionedFilesList');
+        if (filesEl) {
+            if (!filesData.files || filesData.files.length === 0) {
+                filesEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted)">Нет версионированных файлов. Агент автоматически сохраняет версии при изменении файлов.</div>';
+            } else {
+                filesEl.innerHTML = `<table class="admin-table">
+                    <thead><tr><th>Хост</th><th>Файл</th><th>Версий</th><th>Действия</th></tr></thead>
+                    <tbody>${filesData.files.map(f => `<tr>
+                        <td style="font-size:12px">${escapeHtml(f.host || '')}</td>
+                        <td style="font-family:var(--font-mono);font-size:12px">${escapeHtml(f.path || '')}</td>
+                        <td style="text-align:center">${f.versions || 0}</td>
+                        <td><button class="admin-btn" onclick="loadFileHistory('${escapeHtml(f.host)}', '${escapeHtml(f.path)}')">History</button></td>
+                    </tr>`).join('')}</tbody>
+                </table>`;
+            }
+        }
+    } catch (e) {
+        console.error('Versions tab error:', e);
+    }
+}
+
+async function loadFileHistory(host, path) {
+    const section = document.getElementById('versionHistorySection');
+    const historyEl = document.getElementById('versionHistory');
+    section.style.display = 'block';
+    historyEl.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-muted)">Загрузка...</div>';
+
+    try {
+        const data = await api(`/versions/history?host=${encodeURIComponent(host)}&path=${encodeURIComponent(path)}`);
+        if (!data.history || data.history.length === 0) {
+            historyEl.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-muted)">Нет истории</div>';
+            return;
+        }
+
+        historyEl.innerHTML = `<table class="admin-table">
+            <thead><tr><th>Версия</th><th>Дата</th><th>Размер</th><th>Действия</th></tr></thead>
+            <tbody>${data.history.map(v => `<tr>
+                <td>v${v.version}</td>
+                <td style="font-size:12px">${v.timestamp ? formatTime(v.timestamp) : ''}</td>
+                <td>${v.size || '?'} B</td>
+                <td>
+                    ${v.version > 1 ? `<button class="admin-btn" onclick="showVersionDiff('${encodeURIComponent(host)}', '${encodeURIComponent(path)}', ${v.version - 1}, ${v.version})">🔍 Diff</button>` : ''}
+                    <button class="admin-btn" onclick="rollbackVersion('${encodeURIComponent(host)}', '${encodeURIComponent(path)}', ${v.version})">↩️ Rollback</button>
+                </td>
+            </tr>`).join('')}</tbody>
+        </table>`;
+    } catch (e) {
+        historyEl.innerHTML = `<div style="color:var(--accent-red);padding:8px;">Ошибка: ${e.message}</div>`;
+    }
+}
+
+async function showVersionDiff(host, path, fromV, toV) {
+    const section = document.getElementById('versionDiffSection');
+    const diffEl = document.getElementById('versionDiff');
+    section.style.display = 'block';
+    diffEl.textContent = 'Загрузка diff...';
+
+    try {
+        const data = await api(`/versions/diff?host=${host}&path=${path}&from=${fromV}&to=${toV}`);
+        diffEl.innerHTML = escapeHtml(data.diff || 'Нет изменений')
+            .replace(/^(\+.*)$/gm, '<span style="color:var(--accent-green)">$1</span>')
+            .replace(/^(\-.*)$/gm, '<span style="color:var(--accent-red)">$1</span>')
+            .replace(/^(@@.*)$/gm, '<span style="color:var(--accent-primary)">$1</span>');
+    } catch (e) {
+        diffEl.textContent = 'Ошибка: ' + e.message;
+    }
+}
+
+async function rollbackVersion(host, path, version) {
+    if (!confirm(`Откатить файл к версии v${version}?`)) return;
+
+    try {
+        await api('/versions/rollback', {
+            method: 'POST',
+            body: JSON.stringify({ host: decodeURIComponent(host), path: decodeURIComponent(path), version })
+        });
+        toast(`Файл откачен к v${version}`, 'success');
+        loadVersionsTab();
+    } catch (e) {
+        toast('Ошибка отката: ' + e.message, 'error');
+    }
+}
+
+// ═══ PWA Registration ═════════════════════════════════════════════
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+
+// ═══ Init ═══════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {   // Init theme from localStorage
     const savedTheme = localStorage.getItem('sa_theme') || 'dark';
     document.documentElement.setAttribute('data-theme', savedTheme);
     updateThemeButton();

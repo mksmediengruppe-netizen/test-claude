@@ -3,8 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Super Agent v4.0 — AI-инженер</title>
+    <title>Super Agent v5.0 — AI-инженер</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%236366f1'/><text x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-weight='bold'>SA</text></svg>">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
@@ -29,15 +33,15 @@
                 </div>
                 <div>
                     <h1 class="brand-title">Super Agent</h1>
-                    <p class="brand-version">v4.0 Ultimate</p>
+                    <p class="brand-version">v5.0 LangGraph</p>
                 </div>
             </div>
-            <p class="brand-description">Автономный AI-инженер нового поколения с мультиагентной системой</p>
+            <p class="brand-description">Автономный AI-инженер нового поколения с LangGraph StateGraph</p>
             <div class="brand-features">
                 <div class="brand-feature"><span class="feature-icon">🤖</span><div><strong>4 AI-агента</strong><span>Architect, Coder, Reviewer, QA</span></div></div>
-                <div class="brand-feature"><span class="feature-icon">🔗</span><div><strong>SSH Executor</strong><span>Автономное выполнение команд</span></div></div>
-                <div class="brand-feature"><span class="feature-icon">🌐</span><div><strong>Browser Agent</strong><span>Проверка сайтов и API</span></div></div>
-                <div class="brand-feature"><span class="feature-icon">🧠</span><div><strong>Долговременная память</strong><span>Контекст между сессиями</span></div></div>
+                <div class="brand-feature"><span class="feature-icon">🔗</span><div><strong>SSH + Self-Healing</strong><span>Авто-исправление ошибок</span></div></div>
+                <div class="brand-feature"><span class="feature-icon">🧠</span><div><strong>Vector Memory</strong><span>Cross-chat обучение</span></div></div>
+                <div class="brand-feature"><span class="feature-icon">📂</span><div><strong>File Versioning</strong><span>Diff, rollback, история</span></div></div>
             </div>
         </div>
         
@@ -95,7 +99,7 @@
             <div class="sidebar-logo">SA</div>
             <div>
                 <div class="sidebar-title">Super Agent</div>
-                <div class="sidebar-version">v4.0 Ultimate</div>
+                <div class="sidebar-version">v5.0 LangGraph</div>
             </div>
         </div>
 
@@ -106,6 +110,8 @@
         <div class="sidebar-nav">
             <button class="nav-item active" data-tab="chat" onclick="switchTab('chat')"><span class="nav-icon">💬</span> Чат</button>
             <button class="nav-item" data-tab="settings" onclick="switchTab('settings')"><span class="nav-icon">⚙️</span> Настройки</button>
+            <button class="nav-item" data-tab="memory" onclick="switchTab('memory')"><span class="nav-icon">🧠</span> Память</button>
+            <button class="nav-item" data-tab="versions" onclick="switchTab('versions')"><span class="nav-icon">📂</span> Версии</button>
             <button class="nav-item" data-tab="analytics" onclick="switchTab('analytics')"><span class="nav-icon">📊</span> Аналитика</button>
             <button class="nav-item" data-tab="admin" onclick="switchTab('admin')"><span class="nav-icon">👤</span> Админ-панель</button>
         </div>
@@ -125,6 +131,8 @@
             <div class="topbar-tabs">
                 <button class="topbar-tab active" data-tab="chat" onclick="switchTab('chat')">💬 Чат</button>
                 <button class="topbar-tab" data-tab="settings" onclick="switchTab('settings')">⚙️ Настройки</button>
+                <button class="topbar-tab" data-tab="memory" onclick="switchTab('memory')">🧠 Память</button>
+                <button class="topbar-tab" data-tab="versions" onclick="switchTab('versions')">📂 Версии</button>
                 <button class="topbar-tab" data-tab="analytics" onclick="switchTab('analytics')">📊 Аналитика</button>
                 <button class="topbar-tab" data-tab="admin" onclick="switchTab('admin')">👤 Админ</button>
             </div>
@@ -189,14 +197,17 @@
                     <div class="message-avatar">SA</div>
                     <div class="message-body">
                         <div class="message-content">
-                            👋 <strong>Привет! Я Super Agent</strong> — ваш автономный AI-инженер.<br><br>
-                            Я могу:<br>
-                            • 💻 Писать код на любом языке<br>
-                            • 🔗 <strong>Подключаться к серверам по SSH</strong> и выполнять команды<br>
-                            • 📁 <strong>Создавать и редактировать файлы</strong> на серверах через SFTP<br>
-                            • 🌐 <strong>Проверять сайты</strong> через браузер и тестировать API<br>
-                            • 🚀 <strong>Деплоить приложения</strong> автоматически<br>
-                            • 🧠 Мульти-агентная система (Architect → Coder → Reviewer → QA)<br><br>
+                            👋 <strong>Привет! Я Super Agent v5.0</strong> — ваш автономный AI-инженер.<br><br>
+                            <strong>Новое в v5.0:</strong><br>
+                            • 🔄 <strong>LangGraph StateGraph</strong> — граф состояний с checkpointing<br>
+                            • 🛡️ <strong>Self-Healing 2.0</strong> — автоматическое исправление ошибок (3 варианта)<br>
+                            • 🧠 <strong>Vector Memory</strong> — cross-chat обучение через TF-IDF<br>
+                            • 📂 <strong>File Versioning</strong> — diff, rollback, история изменений<br>
+                            • ⚡ <strong>Retry Policy</strong> — exponential backoff + circuit breaker<br>
+                            • 🔒 <strong>Rate Limiting</strong> + Contracts validation<br><br>
+                            <strong>Возможности:</strong><br>
+                            • 💻 Код на любом языке • 🔗 SSH + SFTP • 🌐 Browser Agent • 🚀 Автодеплой<br>
+                            • 🤖 4 AI-агента (Architect → Coder → Reviewer → QA)<br><br>
                             <em>Настройте SSH в ⚙️ Настройки для автономного режима.</em>
                         </div>
                         <div class="message-meta">
@@ -396,6 +407,50 @@
                 <div class="analytics-grid" id="statsGrid"></div>
                 <div id="comparisonSection"></div>
                 <div id="chatStatsSection"></div>
+            </div>
+        </div>
+
+        <!-- Tab content: Memory -->
+        <div id="tabMemory" class="settings-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:24px;">🧠 Векторная память</h2>
+            <div class="settings-section">
+                <div class="settings-section-title">🔍 Поиск по памяти</div>
+                <div class="settings-card" style="cursor:default">
+                    <div style="display:flex;gap:10px;margin-bottom:12px;">
+                        <input type="text" id="memorySearchQuery" class="settings-input" placeholder="Поиск по прошлым задачам..." style="flex:1;">
+                        <button class="settings-save-btn" onclick="searchMemory()" style="padding:8px 16px;font-size:13px;">🔍 Найти</button>
+                    </div>
+                    <div id="memorySearchResults" style="display:none;"></div>
+                </div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-title">📊 Статистика памяти</div>
+                <div id="memoryStats" class="analytics-grid"></div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-title">📝 Последние эпизоды</div>
+                <div id="memoryEpisodes"></div>
+            </div>
+        </div>
+
+        <!-- Tab content: Versions -->
+        <div id="tabVersions" class="settings-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:24px;">📂 Версионирование файлов</h2>
+            <div class="settings-section">
+                <div class="settings-section-title">📄 Версионированные файлы</div>
+                <div id="versionedFilesList"></div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-title">📊 Статистика</div>
+                <div id="versionStats" class="analytics-grid"></div>
+            </div>
+            <div class="settings-section" id="versionHistorySection" style="display:none;">
+                <div class="settings-section-title">📝 История версий</div>
+                <div id="versionHistory"></div>
+            </div>
+            <div class="settings-section" id="versionDiffSection" style="display:none;">
+                <div class="settings-section-title">🔍 Diff</div>
+                <pre id="versionDiff" style="background:var(--bg-tertiary);padding:16px;border-radius:8px;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:12px;white-space:pre-wrap;"></pre>
             </div>
         </div>
 
