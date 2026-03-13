@@ -370,7 +370,7 @@ function renderChatList() {
             </div>
             <div class="chat-item-meta">
                 <span>${time}</span>
-                <span class="chat-item-cost">$${c.total_cost.toFixed(2)}</span>
+                <span class="chat-item-cost">$${c.total_cost.toFixed(2)} (${(c.total_cost * 105).toFixed(0)}₽)</span>
                 <span class="chat-item-model">${variantEmoji}</span>
             </div>
             <div class="chat-context-menu" id="chatMenu_${c.id}">
@@ -602,7 +602,7 @@ function renderChatMessages() {
                         <span>${variantEmoji} ${msg.model || 'AI'}</span>
                         <span>•</span>
                         <span>${formatTime(msg.timestamp)}</span>
-                        ${msg.cost ? `<span>•</span><span class="message-cost">$${msg.cost.toFixed(4)}</span>` : ''}
+                        ${msg.cost ? `<span>•</span><span class="message-cost">$${msg.cost.toFixed(4)} (${(msg.cost * 105).toFixed(2)}₽)</span>` : ''}
                     </div>
                 </div>
             </div>`;
@@ -876,7 +876,7 @@ async function sendMessage() {
                             <span>•</span>
                             <span>сейчас</span>
                             <span>•</span>
-                            <span class="message-cost">$${(event.cost || 0).toFixed(4)}</span>
+                            <span class="message-cost">$${(event.cost || 0).toFixed(4)} (${((event.cost || 0) * 105).toFixed(2)}₽)</span>
                         `;
 
                         // Update preview if HTML found
@@ -1229,7 +1229,7 @@ function renderAnalytics(data) {
 
     grid.innerHTML = `
         <div class="stat-card">
-            <div class="stat-card-value">$${u.total_cost.toFixed(2)}</div>
+            <div class="stat-card-value">$${u.total_cost.toFixed(2)} <small style="font-size:14px;color:var(--text-muted)">(${(u.total_cost_rub || u.total_cost * 105).toFixed(0)}₽)</small></div>
             <div class="stat-card-label">Потрачено всего</div>
         </div>
         <div class="stat-card">
@@ -1285,7 +1285,7 @@ function renderAnalytics(data) {
                     ${data.chats.map(c => `<tr>
                         <td>${escapeHtml(c.title)}</td>
                         <td>${c.messages}</td>
-                        <td class="message-cost">$${c.cost.toFixed(4)}</td>
+                        <td class="message-cost">$${c.cost.toFixed(4)} (${(c.cost * 105).toFixed(2)}₽)</td>
                         <td><span class="chat-item-model">${c.variant || ''}</span></td>
                     </tr>`).join('')}
                 </tbody>
@@ -1315,7 +1315,7 @@ function renderAdminStats(data) {
     const grid = document.getElementById('adminStatsGrid');
     grid.innerHTML = `
         <div class="stat-card">
-            <div class="stat-card-value">$${(data.total_cost || 0).toFixed(2)}</div>
+            <div class="stat-card-value">$${(data.total_cost || 0).toFixed(2)} <small style="font-size:14px;color:var(--text-muted)">(${(data.total_cost_rub || (data.total_cost || 0) * 105).toFixed(0)}₽)</small></div>
             <div class="stat-card-label">Общий расход</div>
         </div>
         <div class="stat-card">
@@ -1340,25 +1340,52 @@ function renderUsersTable(users) {
         return;
     }
 
+    const roleLabels = { admin: '👑 Админ', user: '👤 Пользователь', viewer: '👁 Наблюдатель' };
+    const roleColors = { admin: '#f59e0b', user: '#10b981', viewer: '#6b7280' };
+
     container.innerHTML = `
         <table class="admin-table">
             <thead><tr>
-                <th>Email</th><th>Имя</th><th>Роль</th><th>Расход</th><th>Лимит</th><th>Статус</th><th>Действия</th>
+                <th>Email</th><th>Имя</th><th>Роль</th><th>Расход / Бюджет</th><th>Чатов</th><th>Сообщ.</th><th>Права</th><th>Статус</th><th>Действия</th>
             </tr></thead>
             <tbody>
-                ${users.map(u => `<tr>
-                    <td>${escapeHtml(u.email)}</td>
-                    <td>${escapeHtml(u.name)}</td>
-                    <td>${u.role}</td>
-                    <td>$${u.total_spent.toFixed(2)}</td>
-                    <td>$${u.monthly_limit}</td>
-                    <td><span class="status-badge ${u.is_active ? 'status-active' : 'status-blocked'}">${u.is_active ? '✅ Активен' : '🚫 Заблокирован'}</span></td>
-                    <td>
-                        <button class="admin-btn ${u.is_active ? 'danger' : ''}" onclick="toggleUser('${u.id}')">
-                            ${u.is_active ? '🔒 Блок' : '🔓 Разблок'}
-                        </button>
-                    </td>
-                </tr>`).join('')}
+                ${users.map(u => {
+                    const budgetPct = Math.min(100, u.budget_used_percent || 0);
+                    const budgetColor = budgetPct > 90 ? '#ef4444' : budgetPct > 70 ? '#f59e0b' : '#10b981';
+                    const perms = u.permissions || {};
+                    const permBadges = [
+                        perms.can_use_ssh ? '<span class="perm-badge ssh">SSH</span>' : '',
+                        perms.can_use_browser ? '<span class="perm-badge browser">Browser</span>' : '',
+                        perms.can_use_enhanced ? '<span class="perm-badge enhanced">4-Agent</span>' : '',
+                    ].filter(Boolean).join(' ');
+
+                    return `<tr>
+                        <td style="font-size:12px">${escapeHtml(u.email)}</td>
+                        <td>${escapeHtml(u.name)}</td>
+                        <td><span style="color:${roleColors[u.role] || '#6b7280'};font-weight:600;font-size:12px">${roleLabels[u.role] || u.role}</span></td>
+                        <td style="min-width:180px">
+                            <div style="font-size:12px;margin-bottom:4px">
+                                $${u.total_spent.toFixed(2)} <small>(${(u.total_spent * 105).toFixed(0)}₽)</small>
+                                / $${u.monthly_limit} <small>(${(u.monthly_limit * 105).toFixed(0)}₽)</small>
+                            </div>
+                            <div style="background:var(--bg-secondary);border-radius:4px;height:6px;overflow:hidden">
+                                <div style="width:${budgetPct}%;height:100%;background:${budgetColor};border-radius:4px;transition:width 0.3s"></div>
+                            </div>
+                            <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${budgetPct.toFixed(1)}% использовано</div>
+                        </td>
+                        <td style="text-align:center">${u.total_chats || 0}</td>
+                        <td style="text-align:center">${u.total_messages || 0}</td>
+                        <td style="font-size:11px">${permBadges || '<span style="color:var(--text-muted)">—</span>'}</td>
+                        <td><span class="status-badge ${u.is_active ? 'status-active' : 'status-blocked'}">${u.is_active ? '✅' : '🚫'}</span></td>
+                        <td style="white-space:nowrap">
+                            <button class="admin-btn" onclick="editUser('${u.id}')" title="Редактировать">✏️</button>
+                            <button class="admin-btn ${u.is_active ? 'danger' : ''}" onclick="toggleUser('${u.id}')" title="${u.is_active ? 'Заблокировать' : 'Разблокировать'}">
+                                ${u.is_active ? '🔒' : '🔓'}
+                            </button>
+                            <button class="admin-btn danger" onclick="deleteUser('${u.id}', '${escapeHtml(u.email)}')" title="Удалить">🗑</button>
+                        </td>
+                    </tr>`;
+                }).join('')}
             </tbody>
         </table>
     `;
@@ -1386,7 +1413,7 @@ function renderAdminChats(chats) {
                         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</td>
                         <td>${variantBadge} ${c.variant || ''}</td>
                         <td>${c.message_count}</td>
-                        <td>$${(c.total_cost || 0).toFixed(4)}</td>
+                        <td>$${(c.total_cost || 0).toFixed(4)} <small>(${((c.total_cost || 0) * 105).toFixed(2)}₽)</small></td>
                         <td style="font-size:11px">${date}</td>
                         <td>
                             <button class="admin-btn" onclick="viewAdminChat('${c.id}')">👁 Смотреть</button>
@@ -1409,7 +1436,7 @@ async function viewAdminChat(chatId) {
             <div class="admin-chat-header">
                 <h3>💬 ${escapeHtml(chat.title || 'Chat')}</h3>
                 <div style="font-size:12px;color:var(--text-muted)">
-                    👤 ${escapeHtml(chat.user_email || '')} &bull; ${chat.variant || ''} &bull; $${(chat.total_cost || 0).toFixed(4)}
+                    👤 ${escapeHtml(chat.user_email || '')} &bull; ${chat.variant || ''} &bull; $${(chat.total_cost || 0).toFixed(4)} (${((chat.total_cost || 0) * 105).toFixed(2)}₽)
                 </div>
                 <button class="admin-btn" onclick="closeAdminChatViewer()" style="margin-top:8px">← Назад</button>
             </div>
@@ -1421,7 +1448,7 @@ async function viewAdminChat(chatId) {
             html += `<div class="admin-msg ${isUser ? 'admin-msg-user' : 'admin-msg-assistant'}">
                 <div class="admin-msg-role">${isUser ? '👤 Пользователь' : '🤖 AI'} <span style="color:var(--text-muted);font-size:11px">${time}</span></div>
                 <div class="admin-msg-content">${isUser ? escapeHtml(msg.content || '') : renderMarkdown(msg.content || '')}</div>
-                ${msg.cost ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">💰 $${msg.cost.toFixed(4)} &bull; ${msg.model || ''}</div>` : ''}
+                ${msg.cost ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">💰 $${msg.cost.toFixed(4)} (${(msg.cost * 105).toFixed(2)}₽) &bull; ${msg.model || ''}</div>` : ''}
             </div>`;
         }
 
@@ -1473,22 +1500,110 @@ async function createUser() {
     const name = document.getElementById('newUserName').value.trim();
     const password = document.getElementById('newUserPassword').value;
     const limit = parseInt(document.getElementById('newUserLimit').value) || 100;
+    const role = document.getElementById('newUserRole')?.value || 'user';
 
     if (!email || !password) {
         toast('Заполните email и пароль', 'error');
         return;
     }
 
+    const permissions = {
+        can_use_ssh: document.getElementById('newUserPermSSH')?.checked ?? (role !== 'viewer'),
+        can_use_browser: document.getElementById('newUserPermBrowser')?.checked ?? (role !== 'viewer'),
+        can_use_enhanced: document.getElementById('newUserPermEnhanced')?.checked ?? (role === 'admin'),
+        can_export: true,
+        can_upload_files: true,
+        max_chats: 100,
+        max_messages_per_day: 500
+    };
+
     try {
         await api('/admin/users', {
             method: 'POST',
-            body: JSON.stringify({ email, name, password, monthly_limit: limit })
+            body: JSON.stringify({ email, name, password, role, monthly_limit: limit, permissions })
         });
         closeModal('createUserModal');
         loadAdmin();
         toast('Пользователь создан', 'success');
     } catch (e) {
         toast('Ошибка: ' + e.message, 'error');
+    }
+}
+
+async function editUser(userId) {
+    // Fetch current user data from cached admin data
+    try {
+        const data = await api('/admin/users');
+        const user = data.users.find(u => u.id === userId);
+        if (!user) { toast('Пользователь не найден', 'error'); return; }
+
+        const perms = user.permissions || {};
+        const modal = document.getElementById('editUserModal');
+        if (!modal) return;
+
+        document.getElementById('editUserId').value = userId;
+        document.getElementById('editUserName').value = user.name || '';
+        document.getElementById('editUserRole').value = user.role || 'user';
+        document.getElementById('editUserLimit').value = user.monthly_limit || 100;
+        document.getElementById('editUserPassword').value = '';
+        document.getElementById('editUserPermSSH').checked = perms.can_use_ssh !== false;
+        document.getElementById('editUserPermBrowser').checked = perms.can_use_browser !== false;
+        document.getElementById('editUserPermEnhanced').checked = perms.can_use_enhanced === true;
+
+        modal.classList.add('active');
+    } catch (e) {
+        toast('Ошибка: ' + e.message, 'error');
+    }
+}
+
+async function saveEditUser() {
+    const userId = document.getElementById('editUserId').value;
+    const name = document.getElementById('editUserName').value.trim();
+    const role = document.getElementById('editUserRole').value;
+    const limit = parseInt(document.getElementById('editUserLimit').value) || 100;
+    const password = document.getElementById('editUserPassword').value;
+
+    const body = {
+        name,
+        role,
+        monthly_limit: limit,
+        permissions: {
+            can_use_ssh: document.getElementById('editUserPermSSH').checked,
+            can_use_browser: document.getElementById('editUserPermBrowser').checked,
+            can_use_enhanced: document.getElementById('editUserPermEnhanced').checked,
+        }
+    };
+    if (password) body.password = password;
+
+    try {
+        await api(`/admin/users/${userId}`, {
+            method: 'PUT',
+            body: JSON.stringify(body)
+        });
+        closeModal('editUserModal');
+        loadAdmin();
+        toast('Пользователь обновлён', 'success');
+    } catch (e) {
+        toast('Ошибка: ' + e.message, 'error');
+    }
+}
+
+async function deleteUser(userId, email) {
+    // Show confirmation modal
+    const modal = document.getElementById('confirmDeleteModal');
+    if (modal) {
+        document.getElementById('confirmDeleteText').textContent = `Удалить пользователя ${email}? Все его чаты будут удалены.`;
+        document.getElementById('confirmDeleteBtn').onclick = async () => {
+            try {
+                await api(`/admin/users/${userId}`, { method: 'DELETE' });
+                closeModal('confirmDeleteModal');
+                loadAdmin();
+                toast('Пользователь удалён', 'success');
+            } catch (e) {
+                toast('Ошибка: ' + e.message, 'error');
+            }
+        };
+        modal.classList.add('active');
     }
 }
 

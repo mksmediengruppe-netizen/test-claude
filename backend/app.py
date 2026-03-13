@@ -1134,11 +1134,13 @@ def get_analytics():
     return jsonify({
         "user": {
             "total_cost": round(user_cost, 4),
+            "total_cost_rub": round(user_cost * 105, 2),
             "total_chats": len(user_chats),
             "total_messages": user_messages,
             "tokens_in": user_tokens_in,
             "tokens_out": user_tokens_out,
             "monthly_limit": user.get("monthly_limit", 999999),
+            "monthly_limit_rub": round(user.get("monthly_limit", 999999) * 105, 2),
             "limit_used_percent": round(user_cost / max(user.get("monthly_limit", 999999), 1) * 100, 1)
         },
         "chats": chat_stats,
@@ -1164,6 +1166,7 @@ def admin_list_users():
         user_chats = [c for c in db["chats"].values() if c.get("user_id") == uid]
         total_cost = sum(c.get("total_cost", 0) for c in user_chats)
         total_chats = len(user_chats)
+        total_messages = sum(len(c.get("messages", [])) for c in user_chats)
 
         users.append({
             "id": uid,
@@ -1173,8 +1176,21 @@ def admin_list_users():
             "is_active": u.get("is_active", True),
             "created_at": u.get("created_at", ""),
             "total_spent": round(total_cost, 4),
+            "total_spent_rub": round(total_cost * 105, 2),
             "total_chats": total_chats,
+            "total_messages": total_messages,
             "monthly_limit": u.get("monthly_limit", 999999),
+            "monthly_limit_rub": round(u.get("monthly_limit", 999999) * 105, 2),
+            "budget_used_percent": round(total_cost / max(u.get("monthly_limit", 999999), 0.01) * 100, 1),
+            "permissions": u.get("permissions", {
+                "can_use_ssh": True,
+                "can_use_browser": True,
+                "can_use_enhanced": u.get("role") == "admin",
+                "can_export": True,
+                "can_upload_files": True,
+                "max_chats": 100,
+                "max_messages_per_day": 500
+            }),
             "settings": u.get("settings", {})
         })
 
@@ -1190,8 +1206,9 @@ def admin_create_user():
     email = data.get("email", "").strip().lower()
     password = data.get("password", "")
     name = data.get("name", email.split("@")[0])
-    role = data.get("role", "user")
+    role = data.get("role", "user")  # admin, user, viewer
     monthly_limit = data.get("monthly_limit", 100)
+    permissions = data.get("permissions", {})
 
     if not email or not password:
         return jsonify({"error": "Email and password required"}), 400
@@ -1213,6 +1230,15 @@ def admin_create_user():
         "is_active": True,
         "monthly_limit": monthly_limit,
         "total_spent": 0.0,
+        "permissions": {
+            "can_use_ssh": permissions.get("can_use_ssh", role in ("admin", "user")),
+            "can_use_browser": permissions.get("can_use_browser", role in ("admin", "user")),
+            "can_use_enhanced": permissions.get("can_use_enhanced", role == "admin"),
+            "can_export": permissions.get("can_export", True),
+            "can_upload_files": permissions.get("can_upload_files", True),
+            "max_chats": permissions.get("max_chats", 100),
+            "max_messages_per_day": permissions.get("max_messages_per_day", 500),
+        },
         "settings": {
             "variant": "premium",
             "chat_model": "qwen3",
@@ -1223,6 +1249,69 @@ def admin_create_user():
     }
     db_write(db)
     return jsonify({"ok": True, "user_id": user_id}), 201
+
+
+@app.route("/api/admin/users/<user_id>", methods=["PUT"])
+@require_auth
+@require_admin
+def admin_update_user(user_id):
+    """Update user details — role, name, limit, permissions (admin only)."""
+    data = request.get_json() or {}
+    db = db_read()
+    user = db["users"].get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    # Update allowed fields
+    if "name" in data:
+        user["name"] = data["name"]
+    if "role" in data:
+        user["role"] = data["role"]
+    if "monthly_limit" in data:
+        user["monthly_limit"] = data["monthly_limit"]
+    if "is_active" in data:
+        user["is_active"] = data["is_active"]
+    if "password" in data and data["password"]:
+        user["password_hash"] = hashlib.sha256(data["password"].encode()).hexdigest()
+
+    # Update permissions
+    if "permissions" in data:
+        perms = user.get("permissions", {})
+        for key in ("can_use_ssh", "can_use_browser", "can_use_enhanced",
+                     "can_export", "can_upload_files", "max_chats", "max_messages_per_day"):
+            if key in data["permissions"]:
+                perms[key] = data["permissions"][key]
+        user["permissions"] = perms
+
+    db["users"][user_id] = user
+    db_write(db)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/users/<user_id>", methods=["DELETE"])
+@require_auth
+@require_admin
+def admin_delete_user(user_id):
+    """Delete a user and all their chats (admin only)."""
+    db = db_read()
+    if user_id not in db["users"]:
+        return jsonify({"error": "User not found"}), 404
+    if user_id == request.user_id:
+        return jsonify({"error": "Cannot delete yourself"}), 400
+
+    # Delete user's chats
+    chats_to_delete = [cid for cid, c in db["chats"].items() if c.get("user_id") == user_id]
+    for cid in chats_to_delete:
+        del db["chats"][cid]
+
+    # Delete user's sessions
+    sessions_to_delete = [sid for sid, s in db["sessions"].items() if s.get("user_id") == user_id]
+    for sid in sessions_to_delete:
+        del db["sessions"][sid]
+
+    del db["users"][user_id]
+    db_write(db)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/admin/users/<user_id>/toggle", methods=["POST"])
@@ -1337,12 +1426,14 @@ def admin_stats():
     total_messages = sum(len(c.get("messages", [])) for c in db["chats"].values())
     active_users = len(set(c.get("user_id") for c in db["chats"].values()))
 
+    total_cost = analytics.get("total_cost", 0)
     return jsonify({
         "total_users": total_users,
         "active_users": active_users,
         "total_chats": total_chats,
         "total_messages": total_messages,
-        "total_cost": analytics.get("total_cost", 0),
+        "total_cost": total_cost,
+        "total_cost_rub": round(total_cost * 105, 2),
         "total_requests": analytics.get("total_requests", 0),
         "total_tokens_in": analytics.get("total_tokens_in", 0),
         "total_tokens_out": analytics.get("total_tokens_out", 0),

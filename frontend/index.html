@@ -451,15 +451,84 @@
 
 <!-- ═══ Create User Modal ═══ -->
 <div id="createUserModal" class="modal-overlay">
-    <div class="modal">
-        <div class="modal-title">Создать пользователя</div>
+    <div class="modal" style="max-width:480px;">
+        <div class="modal-title">➕ Создать пользователя</div>
         <input type="email" id="newUserEmail" class="settings-input" placeholder="Email" style="margin-bottom:10px;">
         <input type="text" id="newUserName" class="settings-input" placeholder="Имя" style="margin-bottom:10px;">
         <input type="password" id="newUserPassword" class="settings-input" placeholder="Пароль" style="margin-bottom:10px;">
-        <input type="number" id="newUserLimit" class="settings-input" placeholder="Лимит $/мес" value="100" style="margin-bottom:16px;">
+        <div style="display:flex;gap:10px;margin-bottom:10px;">
+            <select id="newUserRole" class="settings-input" style="flex:1;">
+                <option value="user">👤 Пользователь</option>
+                <option value="admin">👑 Админ</option>
+                <option value="viewer">👁 Наблюдатель</option>
+            </select>
+            <input type="number" id="newUserLimit" class="settings-input" placeholder="Лимит $/мес" value="100" style="flex:1;">
+        </div>
+        <div style="margin-bottom:16px;">
+            <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-secondary);">Права доступа:</div>
+            <div style="display:flex;flex-wrap:wrap;gap:12px;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                    <input type="checkbox" id="newUserPermSSH" checked> 🔗 SSH
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                    <input type="checkbox" id="newUserPermBrowser" checked> 🌐 Browser
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                    <input type="checkbox" id="newUserPermEnhanced"> 🧠 4-Agent Mode
+                </label>
+            </div>
+        </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
             <button class="admin-btn" onclick="closeModal('createUserModal')">Отмена</button>
             <button class="settings-save-btn" onclick="createUser()">Создать</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Edit User Modal ═══ -->
+<div id="editUserModal" class="modal-overlay">
+    <div class="modal" style="max-width:480px;">
+        <div class="modal-title">✏️ Редактировать пользователя</div>
+        <input type="hidden" id="editUserId">
+        <input type="text" id="editUserName" class="settings-input" placeholder="Имя" style="margin-bottom:10px;">
+        <input type="password" id="editUserPassword" class="settings-input" placeholder="Новый пароль (оставьте пустым)" style="margin-bottom:10px;">
+        <div style="display:flex;gap:10px;margin-bottom:10px;">
+            <select id="editUserRole" class="settings-input" style="flex:1;">
+                <option value="user">👤 Пользователь</option>
+                <option value="admin">👑 Админ</option>
+                <option value="viewer">👁 Наблюдатель</option>
+            </select>
+            <input type="number" id="editUserLimit" class="settings-input" placeholder="Лимит $/мес" style="flex:1;">
+        </div>
+        <div style="margin-bottom:16px;">
+            <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-secondary);">Права доступа:</div>
+            <div style="display:flex;flex-wrap:wrap;gap:12px;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                    <input type="checkbox" id="editUserPermSSH"> 🔗 SSH
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                    <input type="checkbox" id="editUserPermBrowser"> 🌐 Browser
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                    <input type="checkbox" id="editUserPermEnhanced"> 🧠 4-Agent Mode
+                </label>
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="admin-btn" onclick="closeModal('editUserModal')">Отмена</button>
+            <button class="settings-save-btn" onclick="saveEditUser()">Сохранить</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Confirm Delete Modal (universal) ═══ -->
+<div id="confirmDeleteModal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-title">⚠️ Подтверждение удаления</div>
+        <p id="confirmDeleteText" style="color:var(--text-secondary);margin-bottom:16px;font-size:14px;"></p>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="admin-btn" onclick="closeModal('confirmDeleteModal')">Отмена</button>
+            <button class="settings-save-btn" style="background:var(--accent-red);" id="confirmDeleteBtn">🗑 Удалить</button>
         </div>
     </div>
 </div>
