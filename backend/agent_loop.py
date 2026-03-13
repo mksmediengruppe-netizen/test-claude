@@ -193,6 +193,132 @@ TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
+            "name": "read_any_file",
+            "description": "Read and analyze any uploaded file. Supports: PDF, DOCX, PPTX, XLSX, CSV, JSON, XML, images (with OCR), archives (ZIP/TAR), code files, TXT, MD. Returns extracted text, metadata, tables, and summary. Use when user uploads a file or asks to analyze a document.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Path to the uploaded file on server"},
+                    "extract_tables": {"type": "boolean", "description": "Whether to extract tables as structured data", "default": True},
+                    "max_length": {"type": "integer", "description": "Maximum text length to return", "default": 50000}
+                },
+                "required": ["file_path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_image",
+            "description": "Analyze an image using AI vision. Understands screenshots, charts, diagrams, photos, handwritten notes. Returns description, detected text (OCR), and insights. Use when user uploads an image or asks to analyze a screenshot/photo.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Path to the image file"},
+                    "question": {"type": "string", "description": "Specific question about the image (optional)", "default": "Describe this image in detail"}
+                },
+                "required": ["file_path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the internet for current information. Returns ranked results with titles, URLs, and snippets. Use when user asks about current events, needs fact-checking, or requests research on any topic.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "num_results": {"type": "integer", "description": "Number of results to return (1-10)", "default": 5}
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_fetch",
+            "description": "Fetch and parse a web page content. Returns clean text extracted from the URL. Use for reading articles, documentation, or any web content in detail.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "URL of the web page to fetch"},
+                    "max_length": {"type": "integer", "description": "Maximum text length to return", "default": 20000}
+                },
+                "required": ["url"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "code_interpreter",
+            "description": "Execute Python code in a secure sandbox. Use for: data analysis, calculations, generating charts/visualizations, processing files, statistical analysis, machine learning. The sandbox has numpy, pandas, matplotlib, plotly, scipy, sklearn pre-installed. Returns stdout, stderr, and any generated files.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "Python code to execute"},
+                    "description": {"type": "string", "description": "Brief description of what the code does"}
+                },
+                "required": ["code"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_chart",
+            "description": "Generate an interactive chart/visualization. Supports: bar, line, pie, scatter, heatmap, histogram, area, radar charts. Returns an HTML artifact with interactive Plotly chart.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "chart_type": {"type": "string", "description": "Type: bar, line, pie, scatter, heatmap, histogram, area, radar"},
+                    "data": {"type": "object", "description": "Chart data: {labels: [...], datasets: [{label: '...', values: [...]}]}"},
+                    "title": {"type": "string", "description": "Chart title"},
+                    "options": {"type": "object", "description": "Additional options: {colors: [...], width: 800, height: 500}"}
+                },
+                "required": ["chart_type", "data", "title"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_artifact",
+            "description": "Create an interactive artifact (live HTML, SVG, Mermaid diagram, React component). The artifact renders in a sandboxed iframe in the chat. Use for: UI mockups, landing pages, interactive demos, diagrams, dashboards.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {"type": "string", "description": "Full HTML/SVG/Mermaid content"},
+                    "type": {"type": "string", "description": "Type: html, svg, mermaid, react", "default": "html"},
+                    "title": {"type": "string", "description": "Artifact title for display"}
+                },
+                "required": ["content", "title"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_report",
+            "description": "Generate a comprehensive multi-page report with embedded charts and tables. Output as DOCX, PDF, or XLSX. Use when user needs a professional report with data analysis, visualizations, and conclusions.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Report title"},
+                    "sections": {"type": "array", "description": "Array of sections: [{heading: '...', content: '...', chart_data: {...}}]", "items": {"type": "object"}},
+                    "format": {"type": "string", "description": "Output format: docx, pdf, xlsx", "default": "docx"},
+                    "filename": {"type": "string", "description": "Output filename"}
+                },
+                "required": ["title", "sections"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "task_complete",
             "description": "Mark the task as complete. Call this when all steps are done and verified.",
             "parameters": {
@@ -230,43 +356,66 @@ class AgentState(TypedDict):
     sse_events: Annotated[list, operator.add]
 
 
-AGENT_SYSTEM_PROMPT = """Ты — Super Agent v5.0, автономный AI-инженер с LangGraph архитектурой. Ты ВЫПОЛНЯЕШЬ задачи, а не просто описываешь их.
+AGENT_SYSTEM_PROMPT = """Ты — Super Agent v6.0, автономный AI-инженер с LangGraph архитектурой. Ты ВЫПОЛНЯЕШЬ задачи, а не просто описываешь их.
 
 У тебя есть реальные инструменты:
-- ssh_execute: выполнить команду на сервере через SSH
-- file_write: создать/записать файл на сервере через SFTP
-- file_read: прочитать файл с сервера
-- browser_navigate: открыть URL и получить HTML страницы
+
+📁 ФАЙЛЫ:
+- read_any_file: прочитать и проанализировать ЛЮБОЙ загруженный файл (PDF, DOCX, PPTX, XLSX, CSV, JSON, изображения с OCR, архивы, код)
+- generate_file: создать файл для скачивания (Word .docx, PDF .pdf, Excel .xlsx, HTML, CSV, JSON, код и др.)
+- generate_report: создать профессиональный отчёт с графиками и таблицами (DOCX/PDF/XLSX)
+- analyze_image: проанализировать изображение (скриншот, диаграмму, фото, рукописные заметки)
+
+🌐 ВЕБ:
+- web_search: поиск в интернете для актуальной информации, фактов, исследований
+- web_fetch: получить и распарсить полный текст веб-страницы
+- browser_navigate: открыть URL и получить HTML
 - browser_check_site: проверить доступность сайта
 - browser_get_text: получить текст со страницы
 - browser_check_api: отправить HTTP запрос к API
-- generate_file: СОЗДАТЬ ФАЙЛ для скачивания пользователем (Word .docx, PDF .pdf, Markdown .md, Excel .xlsx, HTML .html, TXT .txt, CSV .csv, JSON .json, код .py/.js/.css/.sql и др.)
+
+💻 КОД И АНАЛИТИКА:
+- code_interpreter: выполнить Python код в песочнице (анализ данных, графики, расчёты, ML)
+- generate_chart: создать интерактивный график (bar, line, pie, scatter, heatmap, histogram)
+- create_artifact: создать интерактивный артефакт (живой HTML, SVG, Mermaid диаграмма, React компонент)
+
+🖥️ СЕРВЕР:
+- ssh_execute: выполнить команду на сервере через SSH
+- file_write: создать/записать файл на сервере через SFTP
+- file_read: прочитать файл с сервера
+
+🎨 КРЕАТИВ:
 - generate_image: сгенерировать картинку (диаграмма, график, иллюстрация, лого, мокап)
+
+✅ ЗАВЕРШЕНИЕ:
 - task_complete: завершить задачу
 
 ПРАВИЛА:
 1. ВСЕГДА используй инструменты для выполнения задач. НЕ просто описывай что нужно сделать.
-2. Если пользователь просит создать документ/файл — ОБЯЗАТЕЛЬНО используй generate_file чтобы дать ему скачиваемый файл.
-3. Если просит Word документ — generate_file с filename='document.docx'
-4. Если просит PDF — generate_file с filename='document.pdf'
-5. Если просит Excel/таблицу — generate_file с filename='data.xlsx' (content в CSV формате)
-6. Если просит HTML — generate_file с filename='page.html'
-7. Если просит картинку/диаграмму — generate_image
-8. Если просит выполнить команду на сервере — ssh_execute
-9. Если просит создать файл НА СЕРВЕРЕ — file_write (для деплоя)
+2. Если пользователь загрузил файл — ОБЯЗАТЕЛЬНО используй read_any_file чтобы прочитать его.
+3. Если просит создать документ — generate_file (Word: .docx, PDF: .pdf, Excel: .xlsx)
+4. Если просит анализ данных — code_interpreter для расчётов + generate_chart для визуализации
+5. Если просит информацию из интернета — web_search, затем web_fetch для деталей
+6. Если просит график/диаграмму — generate_chart для интерактивного, generate_image для статичного
+7. Если просит UI/лендинг/мокап — create_artifact с HTML/CSS
+8. Если просит отчёт — generate_report с графиками и таблицами
+9. Если просит проанализировать скриншот/фото — analyze_image
 10. После каждого действия проверяй результат и исправляй ошибки.
-11. Когда всё готово — вызови task_complete с описанием результата.
-12. Если нужны SSH-данные (хост, пароль) и они не указаны — спроси у пользователя.
+11. Когда всё готово — вызови task_complete.
+12. Если нужны SSH-данные и не указаны — спроси у пользователя.
 13. Работай пошагово: планируй → выполняй → проверяй → итерируй.
 14. Отвечай на русском языке.
-15. Для каждого шага кратко объясняй что делаешь и зачем.
-16. При ошибке — анализируй причину и пробуй исправить (до 3 попыток).
-17. ВСЕГДА давай ссылки на скачивание файлов в формате: [Скачать filename](download_url)
-18. Если в ответе есть URL — оформляй их как кликабельные ссылки: [текст](url)
+15. При ошибке — анализируй причину и пробуй исправить (до 3 попыток).
+16. ВСЕГДА давай ссылки на скачивание: [📥 Скачать filename](download_url)
+17. Все URL оформляй как кликабельные ссылки: [текст](url)
+18. При веб-поиске ВСЕГДА указывай источники: [Источник](url)
+19. Для графиков и артефактов — показывай их inline в чате.
+20. Если загружен файл с данными — предложи анализ, визуализацию, выводы.
 
 ФОРМАТ ОТВЕТА:
-Кратко опиши что собираешься делать, затем вызови нужный инструмент.
-После генерации файла — ОБЯЗАТЕЛЬНО дай ссылку на скачивание.
+Кратко опиши что делаешь, затем вызови инструмент.
+После генерации файла — дай ссылку на скачивание.
+После веб-поиска — укажи источники.
 Не пиши длинных объяснений — ДЕЙСТВУЙ."""
 
 
@@ -620,6 +769,113 @@ class AgentLoop:
                 except Exception as e:
                     return {"success": False, "error": f"Image generation error: {str(e)}"}
 
+            elif tool_name == "read_any_file":
+                file_path = args.get("file_path", "")
+                if not file_path:
+                    return {"success": False, "error": "file_path is required"}
+                try:
+                    from file_reader import read_file
+                    result = read_file(file_path)
+                    text = result.to_text(max_length=args.get("max_length", 50000))
+                    return {
+                        "success": True,
+                        "filename": result.filename,
+                        "file_type": result.file_type,
+                        "size": result.size,
+                        "pages": result.pages,
+                        "tables_count": len(result.tables),
+                        "images_count": len(result.images),
+                        "content": text
+                    }
+                except Exception as e:
+                    return {"success": False, "error": f"File read error: {str(e)}"}
+
+            elif tool_name == "analyze_image":
+                file_path = args.get("file_path", "")
+                question = args.get("question", "Describe this image in detail")
+                if not file_path:
+                    return {"success": False, "error": "file_path is required"}
+                try:
+                    from file_reader import read_file
+                    result = read_file(file_path)
+                    text = result.to_text()
+                    return {
+                        "success": True,
+                        "filename": result.filename,
+                        "ocr_text": result.text,
+                        "metadata": result.metadata,
+                        "description": f"Image analyzed: {result.filename} ({result.metadata.get('width', '?')}x{result.metadata.get('height', '?')}). OCR text: {result.text[:500] if result.text else 'No text detected'}"
+                    }
+                except Exception as e:
+                    return {"success": False, "error": f"Image analysis error: {str(e)}"}
+
+            elif tool_name == "web_search":
+                query = args.get("query", "")
+                num_results = args.get("num_results", 5)
+                if not query:
+                    return {"success": False, "error": "query is required"}
+                try:
+                    results = self._web_search(query, num_results)
+                    return {"success": True, "query": query, "results": results}
+                except Exception as e:
+                    return {"success": False, "error": f"Web search error: {str(e)}"}
+
+            elif tool_name == "web_fetch":
+                url = args.get("url", "")
+                max_length = args.get("max_length", 20000)
+                if not url:
+                    return {"success": False, "error": "url is required"}
+                try:
+                    text = self._web_fetch(url, max_length)
+                    return {"success": True, "url": url, "content": text}
+                except Exception as e:
+                    return {"success": False, "error": f"Web fetch error: {str(e)}"}
+
+            elif tool_name == "code_interpreter":
+                code = args.get("code", "")
+                description = args.get("description", "")
+                if not code:
+                    return {"success": False, "error": "code is required"}
+                try:
+                    result = self._code_interpreter(code, description)
+                    return result
+                except Exception as e:
+                    return {"success": False, "error": f"Code interpreter error: {str(e)}"}
+
+            elif tool_name == "generate_chart":
+                chart_type = args.get("chart_type", "bar")
+                data = args.get("data", {})
+                title = args.get("title", "Chart")
+                options = args.get("options", {})
+                try:
+                    result = self._generate_chart(chart_type, data, title, options)
+                    return result
+                except Exception as e:
+                    return {"success": False, "error": f"Chart generation error: {str(e)}"}
+
+            elif tool_name == "create_artifact":
+                content = args.get("content", "")
+                art_type = args.get("type", "html")
+                title = args.get("title", "Artifact")
+                if not content:
+                    return {"success": False, "error": "content is required"}
+                try:
+                    result = self._create_artifact(content, art_type, title)
+                    return result
+                except Exception as e:
+                    return {"success": False, "error": f"Artifact creation error: {str(e)}"}
+
+            elif tool_name == "generate_report":
+                title = args.get("title", "Report")
+                sections = args.get("sections", [])
+                fmt = args.get("format", "docx")
+                filename = args.get("filename", f"report.{fmt}")
+                try:
+                    result = self._generate_report(title, sections, fmt, filename)
+                    return result
+                except Exception as e:
+                    return {"success": False, "error": f"Report generation error: {str(e)}"}
+
             elif tool_name == "task_complete":
                 summary = args.get("summary", "Task completed")
                 return {"success": True, "completed": True, "summary": summary}
@@ -773,7 +1029,423 @@ class AgentLoop:
 
         return {"success": False, "error": "Failed to generate image"}
 
-    # ── Self-Healing 2.0 ─────────────────────────────────────────────  def _analyze_error(self, tool_name, args, error_result):
+    # ── Web Search & Fetch ──────────────────────────────────────────
+
+    @retry(max_attempts=2, base_delay=1.0, max_delay=5.0, jitter=0.5,
+           retryable_exceptions=(ConnectionError, TimeoutError, OSError),
+           context="web_search")
+    def _web_search(self, query, num_results=5):
+        """Search the web using DuckDuckGo (no API key needed)."""
+        import requests as req
+        results = []
+        try:
+            # Use DuckDuckGo HTML search
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            resp = req.get(
+                'https://html.duckduckgo.com/html/',
+                params={'q': query},
+                headers=headers,
+                timeout=15
+            )
+            resp.raise_for_status()
+            
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            
+            for r in soup.select('.result')[:num_results]:
+                title_el = r.select_one('.result__title a, .result__a')
+                snippet_el = r.select_one('.result__snippet')
+                if title_el:
+                    href = title_el.get('href', '')
+                    # DuckDuckGo wraps URLs
+                    if 'uddg=' in href:
+                        import urllib.parse
+                        parsed = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
+                        href = parsed.get('uddg', [href])[0]
+                    results.append({
+                        'title': title_el.get_text(strip=True),
+                        'url': href,
+                        'snippet': snippet_el.get_text(strip=True) if snippet_el else ''
+                    })
+        except Exception as e:
+            logger.warning(f"DuckDuckGo search failed: {e}")
+            # Fallback: return a helpful message
+            results = [{'title': 'Search unavailable', 'url': '', 'snippet': f'Error: {str(e)}'}]
+        
+        return results
+
+    @retry(max_attempts=2, base_delay=1.0, max_delay=5.0, jitter=0.5,
+           retryable_exceptions=(ConnectionError, TimeoutError, OSError),
+           context="web_fetch")
+    def _web_fetch(self, url, max_length=20000):
+        """Fetch and extract text content from a URL."""
+        import requests as req
+        from bs4 import BeautifulSoup
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        resp = req.get(url, headers=headers, timeout=20)
+        resp.raise_for_status()
+        
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        
+        # Remove scripts, styles, nav, footer
+        for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
+            tag.decompose()
+        
+        # Extract main content
+        main = soup.find('main') or soup.find('article') or soup.find('body')
+        if main:
+            text = main.get_text(separator='\n', strip=True)
+        else:
+            text = soup.get_text(separator='\n', strip=True)
+        
+        # Clean up multiple newlines
+        import re
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        
+        if len(text) > max_length:
+            text = text[:max_length] + f'\n... [truncated, total {len(text)} chars]'
+        
+        return text
+
+    # ── Code Interpreter ────────────────────────────────────────────
+
+    def _code_interpreter(self, code, description=""):
+        """Execute Python code in a sandboxed subprocess."""
+        import subprocess
+        import tempfile
+        import uuid as _uuid
+        
+        GENERATED_DIR = os.environ.get("GENERATED_DIR", "/var/www/super-agent/backend/generated")
+        os.makedirs(GENERATED_DIR, exist_ok=True)
+        
+        # Create temp file with the code
+        code_file = os.path.join(GENERATED_DIR, f"code_{_uuid.uuid4().hex[:8]}.py")
+        
+        # Wrap code to capture output and generated files
+        wrapped_code = f'''import sys, os
+os.chdir("{GENERATED_DIR}")
+
+{code}
+'''
+        
+        with open(code_file, 'w') as f:
+            f.write(wrapped_code)
+        
+        try:
+            result = subprocess.run(
+                ['python3', code_file],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=GENERATED_DIR,
+                env={**os.environ, 'MPLBACKEND': 'Agg'}
+            )
+            
+            stdout = result.stdout[:10000] if result.stdout else ""
+            stderr = result.stderr[:5000] if result.stderr else ""
+            
+            # Check for generated files (images, csvs, etc.)
+            generated_files = []
+            if os.path.exists(GENERATED_DIR):
+                import glob
+                # Find files modified in last 10 seconds
+                import time as _time
+                now = _time.time()
+                for f in glob.glob(os.path.join(GENERATED_DIR, '*')):
+                    if os.path.getmtime(f) > now - 10 and f != code_file:
+                        fname = os.path.basename(f)
+                        fsize = os.path.getsize(f)
+                        file_id = fname.split('_')[0] if '_' in fname else _uuid.uuid4().hex[:12]
+                        generated_files.append({
+                            'filename': fname,
+                            'size': fsize,
+                            'download_url': f'/api/files/{file_id}/download'
+                        })
+            
+            # Clean up code file
+            try:
+                os.remove(code_file)
+            except:
+                pass
+            
+            return {
+                "success": result.returncode == 0,
+                "stdout": stdout,
+                "stderr": stderr,
+                "return_code": result.returncode,
+                "generated_files": generated_files
+            }
+            
+        except subprocess.TimeoutExpired:
+            return {"success": False, "error": "Code execution timed out (60s limit)"}
+        except Exception as e:
+            return {"success": False, "error": f"Execution error: {str(e)}"}
+        finally:
+            try:
+                os.remove(code_file)
+            except:
+                pass
+
+    # ── Chart Generation ────────────────────────────────────────────
+
+    def _generate_chart(self, chart_type, data, title="Chart", options=None):
+        """Generate interactive chart and save as image."""
+        import uuid as _uuid
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        import numpy as np
+        
+        GENERATED_DIR = os.environ.get("GENERATED_DIR", "/var/www/super-agent/backend/generated")
+        os.makedirs(GENERATED_DIR, exist_ok=True)
+        
+        file_id = str(_uuid.uuid4())[:12]
+        filename = f"{file_id}_chart.png"
+        filepath = os.path.join(GENERATED_DIR, filename)
+        
+        # Setup style
+        plt.style.use('default')
+        fig, ax = plt.subplots(figsize=(12, 7))
+        fig.patch.set_facecolor('#ffffff')
+        ax.set_facecolor('#f8f9fa')
+        
+        colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#06b6d4']
+        
+        labels = data.get('labels', [])
+        values = data.get('values', [])
+        datasets = data.get('datasets', [])
+        
+        if not datasets and values:
+            datasets = [{'label': title, 'data': values}]
+        
+        try:
+            if chart_type == 'pie':
+                vals = datasets[0]['data'] if datasets else values
+                wedges, texts, autotexts = ax.pie(
+                    vals, labels=labels, colors=colors[:len(vals)],
+                    autopct='%1.1f%%', startangle=90,
+                    textprops={'fontsize': 11}
+                )
+                for t in autotexts:
+                    t.set_fontweight('bold')
+                    
+            elif chart_type == 'bar':
+                x = np.arange(len(labels))
+                width = 0.8 / max(len(datasets), 1)
+                for i, ds in enumerate(datasets):
+                    offset = (i - len(datasets)/2 + 0.5) * width
+                    bars = ax.bar(x + offset, ds['data'], width, 
+                                 label=ds.get('label', f'Series {i+1}'),
+                                 color=colors[i % len(colors)], 
+                                 edgecolor='white', linewidth=0.5)
+                    # Add value labels on bars
+                    for bar in bars:
+                        height = bar.get_height()
+                        ax.annotate(f'{height:,.0f}',
+                                   xy=(bar.get_x() + bar.get_width()/2, height),
+                                   xytext=(0, 3), textcoords='offset points',
+                                   ha='center', va='bottom', fontsize=8)
+                ax.set_xticks(x)
+                ax.set_xticklabels(labels, rotation=45, ha='right')
+                if len(datasets) > 1:
+                    ax.legend()
+                    
+            elif chart_type == 'line':
+                for i, ds in enumerate(datasets):
+                    ax.plot(labels, ds['data'], 
+                           label=ds.get('label', f'Series {i+1}'),
+                           color=colors[i % len(colors)],
+                           linewidth=2, marker='o', markersize=5)
+                    ax.fill_between(labels, ds['data'], alpha=0.1, color=colors[i % len(colors)])
+                if len(datasets) > 1:
+                    ax.legend()
+                plt.xticks(rotation=45, ha='right')
+                    
+            elif chart_type in ('scatter', 'dot'):
+                for i, ds in enumerate(datasets):
+                    x_data = ds.get('x', list(range(len(ds['data']))))
+                    ax.scatter(x_data, ds['data'],
+                              label=ds.get('label', f'Series {i+1}'),
+                              color=colors[i % len(colors)], s=60, alpha=0.7)
+                if len(datasets) > 1:
+                    ax.legend()
+                    
+            elif chart_type == 'horizontal_bar':
+                y = np.arange(len(labels))
+                vals = datasets[0]['data'] if datasets else values
+                ax.barh(y, vals, color=colors[:len(vals)], edgecolor='white')
+                ax.set_yticks(y)
+                ax.set_yticklabels(labels)
+                for i, v in enumerate(vals):
+                    ax.text(v + max(vals)*0.01, i, f'{v:,.0f}', va='center', fontsize=9)
+            
+            else:  # Default to bar
+                vals = datasets[0]['data'] if datasets else values
+                ax.bar(labels, vals, color=colors[:len(vals)], edgecolor='white')
+                plt.xticks(rotation=45, ha='right')
+            
+            ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
+            ax.grid(axis='y', alpha=0.3)
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            
+            plt.tight_layout()
+            plt.savefig(filepath, dpi=150, bbox_inches='tight', facecolor=fig.get_facecolor())
+            plt.close()
+            
+            size = os.path.getsize(filepath)
+            
+            # Register file
+            try:
+                from file_generator import _register_file
+                _register_file(file_id, f"chart_{chart_type}.png", filepath, "png", size,
+                              getattr(self, '_chat_id', None),
+                              getattr(self, '_user_id', None))
+            except Exception:
+                pass
+            
+            return {
+                "success": True,
+                "file_id": file_id,
+                "filename": filename,
+                "chart_type": chart_type,
+                "size": size,
+                "download_url": f"/api/files/{file_id}/download",
+                "preview_url": f"/api/files/{file_id}/preview"
+            }
+            
+        except Exception as e:
+            plt.close()
+            return {"success": False, "error": f"Chart error: {str(e)}"}
+
+    # ── Artifact Creation ───────────────────────────────────────────
+
+    def _create_artifact(self, content, art_type="html", title="Artifact"):
+        """Create an interactive artifact (HTML, SVG, Mermaid, React)."""
+        import uuid as _uuid
+        
+        GENERATED_DIR = os.environ.get("GENERATED_DIR", "/var/www/super-agent/backend/generated")
+        os.makedirs(GENERATED_DIR, exist_ok=True)
+        
+        file_id = str(_uuid.uuid4())[:12]
+        
+        if art_type == 'html':
+            filename = f"{file_id}_artifact.html"
+            # Wrap in full HTML if not already
+            if '<html' not in content.lower():
+                content = f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title}</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 20px; background: #fff; color: #1a1a2e; }}
+    </style>
+</head>
+<body>
+{content}
+</body>
+</html>"""
+        elif art_type == 'svg':
+            filename = f"{file_id}_artifact.svg"
+        elif art_type == 'mermaid':
+            filename = f"{file_id}_artifact.html"
+            content = f"""<!DOCTYPE html>
+<html><head>
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<title>{title}</title>
+</head><body>
+<div class="mermaid">
+{content}
+</div>
+<script>mermaid.initialize({{startOnLoad:true, theme:'default'}});</script>
+</body></html>"""
+        elif art_type == 'react':
+            filename = f"{file_id}_artifact.html"
+            content = f"""<!DOCTYPE html>
+<html><head>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<title>{title}</title>
+<style>* {{ margin: 0; padding: 0; box-sizing: border-box; }} body {{ font-family: sans-serif; }}</style>
+</head><body>
+<div id="root"></div>
+<script type="text/babel">
+{content}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body></html>"""
+        else:
+            filename = f"{file_id}_artifact.{art_type}"
+        
+        filepath = os.path.join(GENERATED_DIR, filename)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        size = os.path.getsize(filepath)
+        
+        try:
+            from file_generator import _register_file
+            _register_file(file_id, filename, filepath, art_type, size,
+                          getattr(self, '_chat_id', None),
+                          getattr(self, '_user_id', None))
+        except Exception:
+            pass
+        
+        return {
+            "success": True,
+            "file_id": file_id,
+            "filename": filename,
+            "type": art_type,
+            "title": title,
+            "size": size,
+            "download_url": f"/api/files/{file_id}/download",
+            "preview_url": f"/api/files/{file_id}/preview"
+        }
+
+    # ── Report Generation ───────────────────────────────────────────
+
+    def _generate_report(self, title, sections, fmt="docx", filename=None):
+        """Generate a structured report with sections."""
+        if not filename:
+            filename = f"report.{fmt}"
+        
+        # Build content from sections
+        content_parts = [f"# {title}\n"]
+        for section in sections:
+            if isinstance(section, dict):
+                heading = section.get('heading', section.get('title', ''))
+                body = section.get('content', section.get('body', ''))
+                content_parts.append(f"## {heading}\n\n{body}\n")
+            elif isinstance(section, str):
+                content_parts.append(section + "\n")
+        
+        full_content = "\n".join(content_parts)
+        
+        try:
+            from file_generator import generate_file as gen_file
+            result = gen_file(
+                content=full_content,
+                filename=filename,
+                title=title,
+                chat_id=getattr(self, '_chat_id', None),
+                user_id=getattr(self, '_user_id', None)
+            )
+            return result
+        except Exception as e:
+            return {"success": False, "error": f"Report generation error: {str(e)}"}
+
+    # ── Self-Healing 2.0 ─────────────────────────────────────────────
+
+    def _analyze_error(self, tool_name, args, error_result):
         """
         Анализировать ошибку и предложить варианты исправления.
         Returns: list of fix suggestions (up to 3)
@@ -927,6 +1599,68 @@ class AgentLoop:
             method = result.get("method", "GET")
             time_ms = result.get("response_time_ms", "?")
             return f"🔌 {method} → HTTP {status} | {time_ms}ms"
+
+        elif tool_name == "generate_file":
+            fn = result.get("filename", "")
+            dl = result.get("download_url", "")
+            return f"📄 Файл создан: {fn} | [Скачать]({dl})"
+
+        elif tool_name == "generate_image":
+            fn = result.get("filename", "")
+            dl = result.get("download_url", "")
+            return f"🖼️ Изображение создано: {fn} | [Скачать]({dl})"
+
+        elif tool_name == "read_any_file":
+            fmt = result.get("format", "")
+            length = len(result.get("content", ""))
+            tables = len(result.get("tables", []))
+            imgs = len(result.get("images", []))
+            extra = ""
+            if tables:
+                extra += f" | {tables} таблиц"
+            if imgs:
+                extra += f" | {imgs} изображений"
+            return f"📎 Прочитан {fmt} файл ({length} символов{extra})"
+
+        elif tool_name == "analyze_image":
+            desc = result.get("description", "")[:200]
+            return f"👁️ Анализ изображения: {desc}"
+
+        elif tool_name == "web_search":
+            results_list = result.get("results", [])
+            return f"🔍 Найдено {len(results_list)} результатов"
+
+        elif tool_name == "web_fetch":
+            text = result.get("text", "")
+            return f"🌐 Получено {len(text)} символов текста"
+
+        elif tool_name == "code_interpreter":
+            stdout = result.get("stdout", "")
+            files = result.get("generated_files", [])
+            extra = f" | {len(files)} файлов создано" if files else ""
+            if stdout:
+                lines = stdout.strip().split("\n")
+                preview = "\n".join(lines[:20])
+                if len(lines) > 20:
+                    preview += f"\n... [ещё {len(lines)-20} строк]"
+                return f"🐍 Код выполнен{extra}:\n{preview}"
+            return f"🐍 Код выполнен (пустой вывод){extra}"
+
+        elif tool_name == "generate_chart":
+            ct = result.get("chart_type", "")
+            dl = result.get("download_url", "")
+            return f"📊 График {ct} создан | [Открыть]({dl})"
+
+        elif tool_name == "create_artifact":
+            title = result.get("title", "")
+            art_type = result.get("type", "")
+            preview_url = result.get("preview_url", "")
+            return f"🎨 Артефакт '{title}' ({art_type}) | [Открыть]({preview_url})"
+
+        elif tool_name == "generate_report":
+            fn = result.get("filename", "")
+            dl = result.get("download_url", "")
+            return f"📋 Отчёт создан: {fn} | [Скачать]({dl})"
 
         return "✅ Выполнено"
 

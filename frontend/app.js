@@ -1,6 +1,6 @@
 /**
- * Super Agent v5.0 — Frontend Application
- * LangGraph StateGraph + Self-Healing 2.0 + Vector Memory + File Versioning
+ * Super Agent v6.0 — Frontend Application
+ * LangGraph StateGraph + Self-Healing 2.0 + Vector Memory + File Versioning + Universal File Reader
  */
 
 // ═══ State ═══════════════════════════════════════════════════
@@ -593,11 +593,22 @@ function renderChatMessages() {
         } else {
             const rendered = renderMarkdown(msg.content);
             const variantEmoji = msg.variant === 'original' ? '🔴' : msg.variant === 'budget' ? '🔵' : '🟢';
-            return `<div class="message assistant">
+            const msgId = 'hist-' + Math.random().toString(36).substr(2, 8);
+            return `<div class="message assistant" id="${msgId}">
                 <div class="message-avatar">SA</div>
                 <div class="message-body">
                     ${msg.enhanced ? renderAgentSteps(true) : ''}
-                    <div class="message-content">${rendered}</div>
+                    <div class="message-content" id="${msgId}-content">${rendered}</div>
+                    <div class="message-actions">
+                        <button class="msg-action-btn" onclick="copyMessageContent('${msgId}')" title="Копировать">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            <span>Копировать</span>
+                        </button>
+                        <button class="msg-action-btn" onclick="regenerateMessage()" title="Перегенерировать">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                            <span>Перегенерировать</span>
+                        </button>
+                    </div>
                     <div class="message-meta">
                         <span>${variantEmoji} ${msg.model || 'AI'}</span>
                         <span>•</span>
@@ -876,6 +887,23 @@ async function sendMessage() {
                         if (contentEl) {
                             contentEl.innerHTML = renderMarkdown(fullContent);
                             container.scrollTop = container.scrollHeight;
+                        }
+
+                        // Add action buttons
+                        const msgBody = document.getElementById(assistantId)?.querySelector('.message-body');
+                        if (msgBody && !msgBody.querySelector('.message-actions')) {
+                            const actionsHtml = `<div class="message-actions">
+                                <button class="msg-action-btn" onclick="copyMessageContent('${assistantId}')" title="Копировать">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                    <span>Копировать</span>
+                                </button>
+                                <button class="msg-action-btn" onclick="regenerateMessage()" title="Перегенерировать">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                                    <span>Перегенерировать</span>
+                                </button>
+                            </div>`;
+                            const metaEl2 = document.getElementById(`${assistantId}-meta`);
+                            if (metaEl2) metaEl2.insertAdjacentHTML('beforebegin', actionsHtml);
                         }
 
                         const metaEl = document.getElementById(`${assistantId}-meta`);
@@ -1954,9 +1982,42 @@ function renderMarkdown(text) {
     html = html.replace(/!\[([^\]]*)\]\((\/api\/files\/[^)]+)\)/g,
         '<div class="generated-image"><img src="$2" alt="$1" style="max-width:100%;border-radius:8px;margin:8px 0;"><br><a href="$2" download class="download-link">\u2B07 Скачать $1</a></div>');
 
+    // Blockquotes
+    html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+
+    // Horizontal rules
+    html = html.replace(/^---$/gm, '<hr>');
+    html = html.replace(/^\*\*\*$/gm, '<hr>');
+
+    // Markdown tables
+    html = html.replace(/((?:^\|.+\|$\n?)+)/gm, (tableBlock) => {
+        const rows = tableBlock.trim().split('\n').filter(r => r.trim());
+        if (rows.length < 2) return tableBlock;
+        
+        // Check if second row is separator
+        const isSeparator = /^\|[\s\-:|]+\|$/.test(rows[1]);
+        if (!isSeparator) return tableBlock;
+        
+        let tableHtml = '<table>';
+        // Header
+        const headerCells = rows[0].split('|').filter((c, i, arr) => i > 0 && i < arr.length - 1);
+        tableHtml += '<thead><tr>' + headerCells.map(c => `<th>${c.trim()}</th>`).join('') + '</tr></thead>';
+        // Body
+        tableHtml += '<tbody>';
+        for (let i = 2; i < rows.length; i++) {
+            const cells = rows[i].split('|').filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
+            tableHtml += '<tr>' + cells.map(c => `<td>${c.trim()}</td>`).join('') + '</tr>';
+        }
+        tableHtml += '</tbody></table>';
+        return tableHtml;
+    });
+
     // Lists
     html = html.replace(/^[•\-] (.+)$/gm, '<div style="padding-left:16px;">• $1</div>');
     html = html.replace(/^\d+\. (.+)$/gm, '<div style="padding-left:16px;">$&</div>');
+
+    // Strikethrough
+    html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
 
     // Line breaks
     html = html.replace(/\n/g, '<br>');
@@ -2253,6 +2314,139 @@ async function rollbackVersion(host, path, version) {
     }
 }
 
+// ═══ Message Actions ═════════════════════════════════════════════
+function copyMessageContent(msgId) {
+    const el = document.getElementById(`${msgId}-content`);
+    if (!el) return;
+    const text = el.innerText || el.textContent;
+    navigator.clipboard.writeText(text).then(() => {
+        // Visual feedback
+        const btn = el.closest('.message-body')?.querySelector('.msg-action-btn');
+        if (btn) {
+            const origHtml = btn.innerHTML;
+            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg><span>Скопировано!</span>';
+            btn.classList.add('copied');
+            setTimeout(() => { btn.innerHTML = origHtml; btn.classList.remove('copied'); }, 1500);
+        }
+        toast('Текст скопирован', 'success');
+    });
+}
+
+function regenerateMessage() {
+    if (!state.currentChat || !state.currentChat.messages) return;
+    // Find last user message
+    const messages = state.currentChat.messages;
+    let lastUserMsg = '';
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+            lastUserMsg = messages[i].content;
+            break;
+        }
+    }
+    if (lastUserMsg) {
+        document.getElementById('chatInput').value = lastUserMsg;
+        sendMessage();
+    } else {
+        toast('Нет сообщения для перегенерации', 'error');
+    }
+}
+
+// ═══ Drag & Drop File Upload ═════════════════════════════════════
+function initDragDrop() {
+    const chatArea = document.getElementById('chatMessages');
+    const inputWrapper = document.querySelector('.input-wrapper');
+    if (!chatArea) return;
+
+    let dragCounter = 0;
+
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'dragDropOverlay';
+    overlay.className = 'drag-drop-overlay hidden';
+    overlay.innerHTML = `
+        <div class="drag-drop-content">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <p>Перетащите файлы сюда</p>
+            <span>PDF, DOCX, XLSX, изображения, код и другие файлы</span>
+        </div>
+    `;
+    document.querySelector('.chat-container')?.appendChild(overlay) || document.body.appendChild(overlay);
+
+    // Prevent default drag behaviors on document
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+        document.addEventListener(evt, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+    });
+
+    // Show overlay on drag enter
+    document.addEventListener('dragenter', (e) => {
+        dragCounter++;
+        if (e.dataTransfer?.types?.includes('Files')) {
+            overlay.classList.remove('hidden');
+        }
+    });
+
+    document.addEventListener('dragleave', (e) => {
+        dragCounter--;
+        if (dragCounter <= 0) {
+            dragCounter = 0;
+            overlay.classList.add('hidden');
+        }
+    });
+
+    // Handle drop
+    document.addEventListener('drop', (e) => {
+        dragCounter = 0;
+        overlay.classList.add('hidden');
+
+        const files = e.dataTransfer?.files;
+        if (!files || files.length === 0) return;
+
+        // Use existing file input to trigger upload
+        const fileInput = document.getElementById('fileInput');
+        if (fileInput) {
+            // Create a new DataTransfer to set files
+            const dt = new DataTransfer();
+            for (const f of files) {
+                dt.items.add(f);
+            }
+            fileInput.files = dt.files;
+            handleFileUpload(fileInput);
+        }
+    });
+
+    // Also allow paste files
+    document.addEventListener('paste', (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        const files = [];
+        for (const item of items) {
+            if (item.kind === 'file') {
+                const file = item.getAsFile();
+                if (file) files.push(file);
+            }
+        }
+
+        if (files.length > 0) {
+            e.preventDefault();
+            const fileInput = document.getElementById('fileInput');
+            if (fileInput) {
+                const dt = new DataTransfer();
+                files.forEach(f => dt.items.add(f));
+                fileInput.files = dt.files;
+                handleFileUpload(fileInput);
+            }
+        }
+    });
+}
+
 // ═══ PWA Registration ═════════════════════════════════════════════
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
@@ -2269,6 +2463,9 @@ document.addEventListener('DOMContentLoaded', () => {   // Init theme from local
 
     // Init scroll watcher
     initScrollWatcher();
+
+    // Init drag & drop file upload
+    initDragDrop();
 
     if (state.token && state.user) {
         // Token exists — show app immediately (no flash)

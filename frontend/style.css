@@ -2874,3 +2874,410 @@ a:hover { text-decoration: underline; }
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
     border: 1px solid var(--border-color);
 }
+
+
+/* ═══════════════════════════════════════════════════════════════
+   Super Agent v6.0 — New Feature Styles
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Drag & Drop Overlay ────────────────────────────────────── */
+.drag-drop-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.25s ease;
+}
+.drag-drop-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+.drag-drop-content {
+    text-align: center;
+    padding: 48px 64px;
+    border: 3px dashed var(--accent-primary);
+    border-radius: 24px;
+    background: rgba(99, 102, 241, 0.08);
+    animation: dragPulse 1.5s ease-in-out infinite;
+}
+.drag-drop-content svg {
+    color: var(--accent-primary);
+    margin-bottom: 16px;
+    animation: dragBounce 1s ease-in-out infinite;
+}
+.drag-drop-content p {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 8px;
+}
+.drag-drop-content span {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+@keyframes dragPulse {
+    0%, 100% { border-color: var(--accent-primary); background: rgba(99, 102, 241, 0.08); }
+    50% { border-color: var(--accent-hover); background: rgba(99, 102, 241, 0.15); }
+}
+@keyframes dragBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+}
+
+/* ── Message Action Buttons ─────────────────────────────────── */
+.message-actions {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+.message.assistant:hover .message-actions,
+.message-actions:focus-within {
+    opacity: 1;
+}
+
+.msg-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-family: var(--font-main);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+.msg-action-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--accent-primary);
+}
+.msg-action-btn.copied {
+    color: var(--accent-green);
+    border-color: var(--accent-green);
+}
+.msg-action-btn svg {
+    flex-shrink: 0;
+}
+
+/* ── Enhanced Code Blocks ───────────────────────────────────── */
+.code-block {
+    margin: 12px 0;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    background: var(--bg-code);
+}
+.code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    background: rgba(0, 0, 0, 0.15);
+    border-bottom: 1px solid var(--border-color);
+}
+.code-filename {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+}
+.code-actions {
+    display: flex;
+    gap: 6px;
+}
+.code-btn {
+    padding: 3px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: var(--font-main);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.code-btn:hover {
+    background: var(--accent-primary);
+    color: white;
+    border-color: var(--accent-primary);
+}
+.code-content {
+    padding: 14px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--text-primary);
+}
+
+/* ── Inline Image Display ───────────────────────────────────── */
+.generated-image {
+    margin: 12px 0;
+    text-align: center;
+}
+.generated-image img {
+    max-width: 100%;
+    max-height: 500px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.generated-image img:hover {
+    transform: scale(1.02);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+.generated-image .download-link {
+    margin-top: 8px;
+    display: inline-flex;
+}
+
+/* ── Image Lightbox ─────────────────────────────────────────── */
+.lightbox-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: zoom-out;
+    animation: fadeIn 0.2s ease;
+}
+.lightbox-overlay img {
+    max-width: 90vw;
+    max-height: 90vh;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* ── File Cards in Messages ─────────────────────────────────── */
+.file-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    margin: 6px 4px;
+    transition: all 0.2s;
+}
+.file-card:hover {
+    border-color: var(--accent-primary);
+    background: var(--bg-hover);
+}
+.file-card .file-card-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+}
+.file-card .file-card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.file-card .file-card-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.file-card .file-card-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+.file-card .file-card-actions {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+}
+.file-card .file-card-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+}
+.file-card .file-card-btn:hover {
+    background: var(--accent-primary);
+    color: white;
+    border-color: var(--accent-primary);
+}
+
+/* ── Enhanced Attached Files ────────────────────────────────── */
+.attached-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    border-radius: 12px 12px 0 0;
+    animation: slideUp 0.2s ease;
+}
+.attached-file {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 12px;
+    animation: fadeIn 0.2s ease;
+}
+.attached-file .file-icon {
+    font-size: 16px;
+}
+.attached-file .file-name {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+.attached-file .file-size {
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+.attached-file .file-remove {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: all 0.2s;
+    padding: 0;
+    line-height: 1;
+}
+.attached-file .file-remove:hover {
+    background: var(--accent-red);
+    color: white;
+}
+
+/* ── Typing Cursor ──────────────────────────────────────────── */
+.typing-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 16px;
+    background: var(--accent-primary);
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    animation: blink 0.8s step-end infinite;
+}
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+/* ── Smooth Animations ──────────────────────────────────────── */
+@keyframes slideUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* ── Tables in Messages ─────────────────────────────────────── */
+.message-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 13px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+}
+.message-content th {
+    background: rgba(99, 102, 241, 0.12);
+    color: var(--text-primary);
+    font-weight: 600;
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 2px solid var(--border-color);
+}
+.message-content td {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+.message-content tr:last-child td {
+    border-bottom: none;
+}
+.message-content tr:hover td {
+    background: var(--bg-hover);
+}
+
+/* ── Blockquotes in Messages ────────────────────────────────── */
+.message-content blockquote {
+    border-left: 3px solid var(--accent-primary);
+    padding: 8px 16px;
+    margin: 12px 0;
+    background: rgba(99, 102, 241, 0.06);
+    border-radius: 0 8px 8px 0;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* ── Horizontal Rules ───────────────────────────────────────── */
+.message-content hr {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 16px 0;
+}
+
+/* ── Mobile Responsive Adjustments ──────────────────────────── */
+@media (max-width: 768px) {
+    .message-actions {
+        opacity: 1;
+    }
+    .msg-action-btn span {
+        display: none;
+    }
+    .msg-action-btn {
+        padding: 6px;
+    }
+    .drag-drop-content {
+        padding: 32px;
+    }
+    .drag-drop-content p {
+        font-size: 16px;
+    }
+    .file-card {
+        flex-wrap: wrap;
+    }
+}

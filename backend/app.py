@@ -36,6 +36,7 @@ from file_generator import (
     generate_file, get_file_info, get_file_path, list_files as list_generated_files,
     cleanup_old_files, GENERATED_DIR
 )
+from file_reader import UniversalFileReader
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
@@ -633,6 +634,7 @@ def process_directory(dirpath, base_path=""):
 
 
 def process_uploaded_file(file_storage):
+    """Process uploaded file using UniversalFileReader for rich content extraction."""
     filename = file_storage.filename or "unknown"
     _, ext = os.path.splitext(filename.lower())
 
@@ -640,6 +642,60 @@ def process_uploaded_file(file_storage):
     filepath = os.path.join(tmp_dir, filename)
     file_storage.save(filepath)
 
+    # Store filepath for agent tools (read_any_file, analyze_image)
+    file_id = str(uuid.uuid4())[:12]
+    file_meta = {
+        "id": file_id,
+        "filename": filename,
+        "filepath": filepath,
+        "ext": ext,
+        "size": os.path.getsize(filepath),
+        "uploaded_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    # Try UniversalFileReader for rich formats
+    reader = UniversalFileReader()
+    rich_formats = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt',
+                    '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg',
+                    '.csv', '.json', '.xml', '.yaml', '.yml', '.md', '.html']
+
+    if ext in rich_formats:
+        try:
+            result = reader.read_file(filepath)
+            if result.get('success'):
+                content = result.get('content', '')
+                summary = result.get('summary', '')
+                tables = result.get('tables', [])
+                metadata = result.get('metadata', {})
+
+                parts = [f"📄 **{filename}** ({result.get('format', ext)})"]
+                if summary:
+                    parts.append(f"\n**Сводка:** {summary}")
+                if metadata:
+                    meta_str = ", ".join(f"{k}: {v}" for k, v in list(metadata.items())[:5])
+                    parts.append(f"**Метаданные:** {meta_str}")
+                if tables:
+                    parts.append(f"\n**Таблицы ({len(tables)}):**")
+                    for i, tbl in enumerate(tables[:3]):
+                        if isinstance(tbl, dict):
+                            parts.append(f"\n*Таблица {i+1}:*\n{tbl.get('markdown', tbl.get('text', str(tbl)))}")
+                        else:
+                            parts.append(f"\n*Таблица {i+1}:*\n{str(tbl)[:2000]}")
+                if content:
+                    if len(content) > 30000:
+                        content = content[:30000] + f"\n... [обрезано, всего {len(content)} символов]"
+                    parts.append(f"\n**Содержимое:**\n{content}")
+
+                # Save file_meta for agent access
+                file_meta['content_preview'] = content[:500] if content else ''
+                file_meta['has_tables'] = len(tables) > 0
+                _save_uploaded_file_meta(file_meta)
+
+                return "\n".join(parts)
+        except Exception as e:
+            pass  # Fall through to legacy processing
+
+    # Legacy: archives
     if ext == '.zip':
         extract_dir = os.path.join(tmp_dir, "extracted")
         os.makedirs(extract_dir, exist_ok=True)
@@ -666,27 +722,69 @@ def process_uploaded_file(file_storage):
         content = read_file_content(filepath)
         if content:
             lang = ext.lstrip('.') if ext else 'text'
+            _save_uploaded_file_meta(file_meta)
             return f"📄 **Файл: {filename}**\n```{lang}\n{content}\n```"
         return f"📄 **Файл: {filename}** [не удалось прочитать]"
 
-    return f"📎 **Файл: {filename}** ({ext or 'unknown'} — бинарный файл, пропущен)"
+    _save_uploaded_file_meta(file_meta)
+    return f"📎 **Файл: {filename}** ({ext or 'unknown'} — бинарный файл, сохранён для анализа)\n[Путь: {filepath}]"
+
+
+# ── Uploaded files metadata store ──
+_uploaded_files = {}  # file_id -> file_meta
+
+def _save_uploaded_file_meta(meta):
+    """Save uploaded file metadata for agent tool access."""
+    _uploaded_files[meta['id']] = meta
+
+def _get_uploaded_file_path(file_id):
+    """Get filepath by file_id."""
+    meta = _uploaded_files.get(file_id)
+    return meta.get('filepath') if meta else None
 
 
 @app.route("/api/upload", methods=["POST"])
 @require_auth
 def upload_file():
-    """Upload file(s) and return processed content."""
+    """Upload file(s) and return processed content with file paths for agent."""
     if 'file' not in request.files:
         return jsonify({"error": "No file provided"}), 400
 
     files = request.files.getlist('file')
     results = []
+    file_paths = []  # For agent tools
     for f in files:
         if f.filename:
             content = process_uploaded_file(f)
             results.append(content)
+            # Find the saved filepath from _uploaded_files
+            for fid, meta in sorted(_uploaded_files.items(), key=lambda x: x[1].get('uploaded_at', ''), reverse=True):
+                if meta['filename'] == f.filename:
+                    file_paths.append({"id": fid, "filename": meta['filename'], "filepath": meta['filepath'], "size": meta['size']})
+                    break
 
-    return jsonify({"content": "\n\n".join(results), "file_count": len(results)})
+    return jsonify({
+        "content": "\n\n".join(results),
+        "file_count": len(results),
+        "files": file_paths
+    })
+
+
+@app.route("/api/uploaded-files", methods=["GET"])
+@require_auth
+def list_uploaded_files():
+    """List all uploaded files with metadata."""
+    files = []
+    for fid, meta in _uploaded_files.items():
+        files.append({
+            "id": fid,
+            "filename": meta['filename'],
+            "size": meta['size'],
+            "ext": meta['ext'],
+            "uploaded_at": meta['uploaded_at'],
+            "has_tables": meta.get('has_tables', False)
+        })
+    return jsonify({"files": sorted(files, key=lambda x: x['uploaded_at'], reverse=True)})
 
 
 # ══════════════════════════════════════════════════════════════════

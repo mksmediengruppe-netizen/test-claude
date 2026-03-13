@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Super Agent v5.0 — AI-инженер</title>
+    <title>Super Agent v6.0 — AI-инженер</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%236366f1'/><text x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-weight='bold'>SA</text></svg>">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#6366f1">
@@ -33,7 +33,7 @@
                 </div>
                 <div>
                     <h1 class="brand-title">Super Agent</h1>
-                    <p class="brand-version">v5.0 LangGraph</p>
+                    <p class="brand-version">v6.0 Ultimate</p>
                 </div>
             </div>
             <p class="brand-description">Автономный AI-инженер нового поколения с LangGraph StateGraph</p>
@@ -118,7 +118,7 @@
             <div class="sidebar-logo">SA</div>
             <div style="flex:1">
                 <div class="sidebar-title">Super Agent</div>
-                <div class="sidebar-version">v5.0 LangGraph</div>
+                <div class="sidebar-version">v6.0 Ultimate</div>
             </div>
             <button class="sidebar-collapse-btn" onclick="toggleSidebar()" title="Свернуть меню">◀</button>
         </div>
@@ -211,24 +211,34 @@
 
         <!-- Tab content: Chat -->
         <div id="tabChat" class="chat-container">
+            <!-- Drag & Drop overlay -->
+            <div id="dropOverlay" class="drop-overlay hidden">
+                <div class="drop-overlay-content">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <h3>Перетащите файлы сюда</h3>
+                    <p>PDF, Word, Excel, картинки, код, архивы</p>
+                </div>
+            </div>
             <div id="chatMessages" class="chat-messages">
                 <!-- Welcome message -->
                 <div class="message assistant">
                     <div class="message-avatar">SA</div>
                     <div class="message-body">
                         <div class="message-content">
-                            👋 <strong>Привет! Я Super Agent v5.0</strong> — ваш автономный AI-инженер.<br><br>
-                            <strong>Новое в v5.0:</strong><br>
-                            • 🔄 <strong>LangGraph StateGraph</strong> — граф состояний с checkpointing<br>
-                            • 🛡️ <strong>Self-Healing 2.0</strong> — автоматическое исправление ошибок (3 варианта)<br>
-                            • 🧠 <strong>Vector Memory</strong> — cross-chat обучение через TF-IDF<br>
-                            • 📂 <strong>File Versioning</strong> — diff, rollback, история изменений<br>
-                            • ⚡ <strong>Retry Policy</strong> — exponential backoff + circuit breaker<br>
-                            • 🔒 <strong>Rate Limiting</strong> + Contracts validation<br><br>
-                            <strong>Возможности:</strong><br>
-                            • 💻 Код на любом языке • 🔗 SSH + SFTP • 🌐 Browser Agent • 🚀 Автодеплой<br>
-                            • 🤖 4 AI-агента (Architect → Coder → Reviewer → QA)<br><br>
-                            <em>Настройте SSH в ⚙️ Настройки для автономного режима.</em>
+                            👋 <strong>Привет! Я Super Agent v6.0</strong> — ваш автономный AI-инженер.<br><br>
+                            <strong>Я могу:</strong><br>
+                            • 📎 <strong>Читать любые файлы</strong> — PDF, Word, Excel, картинки, код, архивы<br>
+                            • 📄 <strong>Создавать файлы</strong> — Word, PDF, Excel, HTML, код<br>
+                            • 📊 <strong>Анализировать данные</strong> — графики, статистика, отчёты<br>
+                            • 🐍 <strong>Code Interpreter</strong> — запуск Python кода для анализа<br>
+                            • 🔍 <strong>Поиск в интернете</strong> — актуальная информация с цитатами<br>
+                            • 🎨 <strong>Артефакты</strong> — живой HTML/SVG/React прямо в чате<br>
+                            • 🔗 <strong>SSH + Browser</strong> — автономный деплой и мониторинг<br><br>
+                            <em>Перетащите файл в чат или нажмите 📎 чтобы прикрепить.</em>
                         </div>
                         <div class="message-meta">
                             <span>🟢 MiniMax M2.5</span>
