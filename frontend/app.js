@@ -627,6 +627,7 @@ function renderChatMessages() {
     }).join('');
 
     container.scrollTop = container.scrollHeight;
+    renderMermaidDiagrams();
 }
 
 // ═══ Stop Generation ════════════════════════════════════════
@@ -893,6 +894,7 @@ async function sendMessage() {
                         if (contentEl) {
                             contentEl.innerHTML = renderMarkdown(fullContent);
                             container.scrollTop = container.scrollHeight;
+                            renderMermaidDiagrams();
                         }
 
                         // Add action buttons
@@ -1928,118 +1930,151 @@ function updateUI() {
 function renderMarkdown(text) {
     if (!text) return '';
 
-    // Escape HTML first
-    let html = escapeHtml(text);
+    // Pre-process: extract file download/preview links before marked processes them
+    // Replace Super Agent specific patterns
+    let processed = text;
 
-    // Code blocks with filename: ```lang filename.ext
-    html = html.replace(/```(\w+)\s+([\w\-./]+\.\w+)\n([\s\S]*?)```/g, (match, lang, filename, code) => {
-        const id = 'code-' + Math.random().toString(36).substr(2, 6);
-        return `<div class="code-block">
-            <div class="code-header">
-                <span class="code-filename">📄 ${filename}</span>
-                <div class="code-actions">
-                    <button class="code-btn" onclick="copyCode('${id}')">📋 Copy</button>
-                    <button class="code-btn" onclick="downloadCode('${id}', '${filename}')">⬇ ${filename.split('.').pop()}</button>
-                    ${lang === 'html' ? `<button class="code-btn" onclick="previewCode('${id}')">👁 Preview</button>` : ''}
-                </div>
-            </div>
-            <div class="code-content" id="${id}">${code}</div>
-        </div>`;
-    });
-
-    // Generic code blocks: ```lang
-    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
-        const id = 'code-' + Math.random().toString(36).substr(2, 6);
-        return `<div class="code-block">
-            <div class="code-header">
-                <span class="code-filename">${lang || 'code'}</span>
-                <div class="code-actions">
-                    <button class="code-btn" onclick="copyCode('${id}')">📋 Copy</button>
-                </div>
-            </div>
-            <div class="code-content" id="${id}">${code}</div>
-        </div>`;
-    });
-
-    // Inline code
-    html = html.replace(/`([^`]+)`/g, '<code style="background:var(--bg-code);padding:2px 6px;border-radius:4px;font-family:var(--font-mono);font-size:12px;">$1</code>');
-
-    // Bold
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-
-    // Italic
-    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-    // Headers
-    html = html.replace(/^### (.+)$/gm, '<h4 style="margin:12px 0 6px;font-size:14px;">$1</h4>');
-    html = html.replace(/^## (.+)$/gm, '<h3 style="margin:14px 0 8px;font-size:16px;">$1</h3>');
-    html = html.replace(/^# (.+)$/gm, '<h2 style="margin:16px 0 10px;font-size:18px;">$1</h2>');
+    // Inline images from generated files: ![alt](/api/files/xxx/preview)
+    processed = processed.replace(/!\[([^\]]*)\]\((\/api\/files\/[^)]+)\)/g,
+        '<div class="generated-image"><img src="$2" alt="$1" style="max-width:100%;border-radius:8px;margin:8px 0;"><br><a href="$2" download class="download-link">\u2B07 \u0421\u043a\u0430\u0447\u0430\u0442\u044c $1</a></div>');
 
     // Download links: [Скачать filename](/api/files/xxx/download)
-    html = html.replace(/\[([^\]]*Скачать[^\]]*)\]\((\/api\/files\/[^)]+)\)/g,
+    processed = processed.replace(/\[([^\]]*\u0421\u043a\u0430\u0447\u0430\u0442\u044c[^\]]*)\]\((\/api\/files\/[^)]+)\)/g,
         '<a href="$2" class="download-link" target="_blank" download>\u2B07 $1</a>');
 
     // File download links: [filename](/api/files/xxx/download)
-    html = html.replace(/\[([^\]]+)\]\((\/api\/files\/[^)]+\/download)\)/g,
-        '<a href="$2" class="download-link" target="_blank" download>\u{1F4E5} $1</a>');
+    processed = processed.replace(/\[([^\]]+)\]\((\/api\/files\/[^)]+\/download)\)/g,
+        '<a href="$2" class="download-link" target="_blank" download>\uD83D\uDCE5 $1</a>');
 
     // File preview links: [Preview](/api/files/xxx/preview)
-    html = html.replace(/\[([^\]]+)\]\((\/api\/files\/[^)]+\/preview)\)/g,
-        '<a href="$2" class="preview-link" target="_blank">\u{1F441} $1</a>');
+    processed = processed.replace(/\[([^\]]+)\]\((\/api\/files\/[^)]+\/preview)\)/g,
+        '<a href="$2" class="preview-link" target="_blank">\uD83D\uDC41 $1</a>');
 
-    // Markdown links: [text](url)
-    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,
-        '<a href="$2" class="chat-link" target="_blank" rel="noopener">$1 \u2197</a>');
+    // Use marked.js for full Markdown rendering
+    if (typeof marked !== 'undefined') {
+        const renderer = new marked.Renderer();
 
-    // Auto-detect bare URLs and make them clickable
-    html = html.replace(/(^|[^"=\/])(https?:\/\/[^\s<]+)/g,
-        '$1<a href="$2" class="chat-link" target="_blank" rel="noopener">$2</a>');
+        // Custom code block renderer with copy/download buttons and syntax highlighting
+        renderer.code = function(code, lang) {
+            // Handle code object from marked v12+
+            if (typeof code === 'object') {
+                lang = code.lang || '';
+                code = code.text || '';
+            }
+            const id = 'code-' + Math.random().toString(36).substr(2, 8);
+            let highlighted = escapeHtml(code);
 
-    // Inline images from generated files: ![alt](/api/files/xxx/preview)
-    html = html.replace(/!\[([^\]]*)\]\((\/api\/files\/[^)]+)\)/g,
-        '<div class="generated-image"><img src="$2" alt="$1" style="max-width:100%;border-radius:8px;margin:8px 0;"><br><a href="$2" download class="download-link">\u2B07 Скачать $1</a></div>');
+            // Check for filename in lang: e.g., "python main.py"
+            let filename = '';
+            if (lang && lang.includes(' ')) {
+                const parts = lang.split(' ');
+                lang = parts[0];
+                filename = parts.slice(1).join(' ');
+            }
 
-    // Blockquotes
-    html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+            // Mermaid diagrams
+            if (lang === 'mermaid') {
+                return `<div class="mermaid">${escapeHtml(code)}</div>`;
+            }
 
-    // Horizontal rules
-    html = html.replace(/^---$/gm, '<hr>');
-    html = html.replace(/^\*\*\*$/gm, '<hr>');
+            // Syntax highlighting via highlight.js
+            if (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang)) {
+                try {
+                    highlighted = hljs.highlight(code, { language: lang }).value;
+                } catch (e) { /* fallback to escaped */ }
+            } else if (typeof hljs !== 'undefined') {
+                try {
+                    highlighted = hljs.highlightAuto(code).value;
+                } catch (e) { /* fallback */ }
+            }
 
-    // Markdown tables
-    html = html.replace(/((?:^\|.+\|$\n?)+)/gm, (tableBlock) => {
-        const rows = tableBlock.trim().split('\n').filter(r => r.trim());
-        if (rows.length < 2) return tableBlock;
-        
-        // Check if second row is separator
-        const isSeparator = /^\|[\s\-:|]+\|$/.test(rows[1]);
-        if (!isSeparator) return tableBlock;
-        
-        let tableHtml = '<table>';
-        // Header
-        const headerCells = rows[0].split('|').filter((c, i, arr) => i > 0 && i < arr.length - 1);
-        tableHtml += '<thead><tr>' + headerCells.map(c => `<th>${c.trim()}</th>`).join('') + '</tr></thead>';
-        // Body
-        tableHtml += '<tbody>';
-        for (let i = 2; i < rows.length; i++) {
-            const cells = rows[i].split('|').filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
-            tableHtml += '<tr>' + cells.map(c => `<td>${c.trim()}</td>`).join('') + '</tr>';
+            const filenameDisplay = filename || lang || 'code';
+            const downloadBtn = filename
+                ? `<button class="code-btn" onclick="downloadCode('${id}', '${filename}')">\u2B07 ${filename.split('.').pop()}</button>`
+                : '';
+            const previewBtn = (lang === 'html' && filename)
+                ? `<button class="code-btn" onclick="previewCode('${id}')">\uD83D\uDC41 Preview</button>`
+                : '';
+
+            return `<div class="code-block">
+                <div class="code-header">
+                    <span class="code-filename">\uD83D\uDCC4 ${filenameDisplay}</span>
+                    <div class="code-actions">
+                        <button class="code-btn" onclick="copyCode('${id}')">📋 Copy</button>
+                        ${downloadBtn}
+                        ${previewBtn}
+                    </div>
+                </div>
+                <pre class="code-content" id="${id}"><code class="hljs${lang ? ' language-' + lang : ''}">${highlighted}</code></pre>
+            </div>`;
+        };
+
+        // Custom link renderer to open in new tab
+        renderer.link = function(href, title, text) {
+            if (typeof href === 'object') {
+                text = href.text || '';
+                title = href.title || '';
+                href = href.href || '';
+            }
+            const titleAttr = title ? ` title="${title}"` : '';
+            return `<a href="${href}" class="chat-link" target="_blank" rel="noopener"${titleAttr}>${text} \u2197</a>`;
+        };
+
+        marked.setOptions({
+            renderer: renderer,
+            gfm: true,
+            breaks: true,
+            smartypants: false
+        });
+
+        try {
+            let html = marked.parse(processed);
+            return html;
+        } catch (e) {
+            console.warn('marked.js parse error, falling back:', e);
         }
-        tableHtml += '</tbody></table>';
-        return tableHtml;
+    }
+
+    // Fallback: basic rendering if marked.js not loaded
+    let html = escapeHtml(processed);
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (m, lang, code) => {
+        const id = 'code-' + Math.random().toString(36).substr(2, 6);
+        return `<div class="code-block"><div class="code-header"><span class="code-filename">${lang||'code'}</span><div class="code-actions"><button class="code-btn" onclick="copyCode('${id}')">📋 Copy</button></div></div><div class="code-content" id="${id}">${code}</div></div>`;
     });
-
-    // Lists
-    html = html.replace(/^[•\-] (.+)$/gm, '<div style="padding-left:16px;">• $1</div>');
-    html = html.replace(/^\d+\. (.+)$/gm, '<div style="padding-left:16px;">$&</div>');
-
-    // Strikethrough
-    html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
-
-    // Line breaks
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+    html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+    html = html.replace(/^---$/gm, '<hr>');
     html = html.replace(/\n/g, '<br>');
-
     return html;
+}
+
+// Initialize mermaid for diagram rendering
+if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
+}
+
+// Re-render mermaid diagrams after DOM update
+function renderMermaidDiagrams() {
+    if (typeof mermaid !== 'undefined') {
+        try {
+            document.querySelectorAll('.mermaid:not([data-processed])').forEach((el, i) => {
+                el.setAttribute('data-processed', 'true');
+                const id = 'mermaid-' + Date.now() + '-' + i;
+                mermaid.render(id, el.textContent).then(({svg}) => {
+                    el.innerHTML = svg;
+                }).catch(err => {
+                    console.warn('Mermaid render error:', err);
+                    el.innerHTML = '<pre>' + el.textContent + '</pre>';
+                });
+            });
+        } catch (e) { console.warn('Mermaid init error:', e); }
+    }
 }
 
 function renderAgentSteps(completed) {
