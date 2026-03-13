@@ -53,6 +53,13 @@ os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(GENERATED_DIR, exist_ok=True)
 
+# SQLite database (migrated from JSON)
+try:
+    from database import load_db as _sqlite_load, save_db as _sqlite_save, init_db
+    _USE_SQLITE = True
+except ImportError:
+    _USE_SQLITE = False
+
 DB_FILE = os.path.join(DATA_DIR, "database.json")
 _lock = threading.Lock()
 
@@ -153,55 +160,73 @@ SKIP_DIRS = {
     '.idea', '.vscode', '.DS_Store',
 }
 
+# ── Database Layer ─────────────────────────────────────────────────────
 
-# ── Database Layer ─────────────────────────────────────────────
+_DEFAULT_DB = {
+    "users": {
+        "admin": {
+            "id": "admin",
+            "email": "ym@mksmedia.ru",
+            "password_hash": hashlib.sha256("qwerty1985".encode()).hexdigest(),
+            "name": "Администратор",
+            "role": "admin",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "is_active": True,
+            "monthly_limit": 999999,
+            "total_spent": 0.0,
+            "settings": {
+                "variant": "premium",
+                "chat_model": "qwen3",
+                "enhanced_mode": False,
+                "design_pro": False,
+                "language": "ru"
+            }
+        }
+    },
+    "sessions": {},
+    "chats": {},
+    "ssh_servers": {},
+    "analytics": {
+        "total_requests": 0,
+        "total_tokens_in": 0,
+        "total_tokens_out": 0,
+        "total_cost": 0.0,
+        "daily_stats": {}
+    },
+    "memory": {
+        "episodic": [],
+        "semantic": {},
+        "procedural": {}
+    }
+}
+
+
 def _load_db():
-    """Load entire database from JSON file."""
+    """Load database — SQLite primary, JSON fallback."""
+    if _USE_SQLITE:
+        try:
+            data = _sqlite_load()
+            if data and data.get("users"):
+                return data
+        except Exception as e:
+            logging.warning(f"SQLite load failed, falling back to JSON: {e}")
+    # JSON fallback
     try:
         with open(DB_FILE, "r") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        return {
-            "users": {
-                "admin": {
-                    "id": "admin",
-                    "email": "ym@mksmedia.ru",
-                    "password_hash": hashlib.sha256("qwerty1985".encode()).hexdigest(),
-                    "name": "Администратор",
-                    "role": "admin",
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "is_active": True,
-                    "monthly_limit": 999999,
-                    "total_spent": 0.0,
-                    "settings": {
-                        "variant": "premium",
-                        "chat_model": "qwen3",
-                        "enhanced_mode": False,
-                        "design_pro": False,
-                        "language": "ru"
-                    }
-                }
-            },
-            "sessions": {},
-            "chats": {},
-            "ssh_servers": {},
-            "analytics": {
-                "total_requests": 0,
-                "total_tokens_in": 0,
-                "total_tokens_out": 0,
-                "total_cost": 0.0,
-                "daily_stats": {}
-            },
-            "memory": {
-                "episodic": [],
-                "semantic": {},
-                "procedural": {}
-            }
-        }
+        return _DEFAULT_DB.copy()
 
 
 def _save_db(db):
-    """Save database atomically."""
+    """Save database — SQLite primary, JSON fallback."""
+    if _USE_SQLITE:
+        try:
+            _sqlite_save(db)
+            return
+        except Exception as e:
+            logging.warning(f"SQLite save failed, falling back to JSON: {e}")
+    # JSON fallback
     tmp = DB_FILE + ".tmp"
     with open(tmp, "w") as f:
         json.dump(db, f, ensure_ascii=False, indent=2)
