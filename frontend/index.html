@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Agent v4.0 — AI-инженер</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%236366f1'/><text x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-weight='bold'>SA</text></svg>">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ═══ Login Screen ═══ -->
+<div id="loginScreen" class="login-screen">
+    <div class="login-card">
+        <div class="login-logo">
+            <div class="logo-icon">SA</div>
+            <div>
+                <div class="logo-text">Super Agent</div>
+                <div style="font-size:12px;color:var(--text-muted)">v4.0 — AI-инженер</div>
+            </div>
+        </div>
+        <input type="email" id="loginEmail" class="login-input" placeholder="Email" value="ym@mksmedia.ru">
+        <input type="password" id="loginPassword" class="login-input" placeholder="Пароль">
+        <button id="loginBtn" class="login-btn" onclick="doLogin()">Войти</button>
+        <div id="loginError" class="login-error"></div>
+    </div>
+</div>
+
+<!-- ═══ Main App ═══ -->
+<div id="appContainer" class="app-container hidden">
+
+    <!-- ── Sidebar ── -->
+    <aside id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">SA</div>
+            <div>
+                <div class="sidebar-title">Super Agent</div>
+                <div class="sidebar-version">v4.0 Ultimate</div>
+            </div>
+        </div>
+
+        <div class="sidebar-search">
+            <input type="text" id="chatSearch" placeholder="Поиск чатов..." oninput="filterChats()">
+        </div>
+
+        <div class="sidebar-nav">
+            <button class="nav-item active" data-tab="chat" onclick="switchTab('chat')">
+                <span class="nav-icon">💬</span> Чат
+            </button>
+            <button class="nav-item" data-tab="settings" onclick="switchTab('settings')">
+                <span class="nav-icon">⚙️</span> Настройки
+            </button>
+            <button class="nav-item" data-tab="analytics" onclick="switchTab('analytics')">
+                <span class="nav-icon">📊</span> Аналитика
+            </button>
+            <button class="nav-item" data-tab="admin" onclick="switchTab('admin')">
+                <span class="nav-icon">👤</span> Админ-панель
+            </button>
+        </div>
+
+        <div class="sidebar-chats-label">Последние чаты</div>
+        <div id="chatList" class="sidebar-chats"></div>
+
+        <button class="new-chat-btn" onclick="createNewChat()">
+            ✨ Новый чат
+        </button>
+    </aside>
+
+    <!-- ── Main Area ── -->
+    <div class="main-area">
+        <!-- Top bar -->
+        <div class="topbar">
+            <button class="topbar-toggle" onclick="toggleSidebar()" title="Меню">☰</button>
+
+            <div class="topbar-tabs">
+                <button class="topbar-tab active" data-tab="chat" onclick="switchTab('chat')">💬 Чат</button>
+                <button class="topbar-tab" data-tab="settings" onclick="switchTab('settings')">⚙️ Настройки</button>
+                <button class="topbar-tab" data-tab="analytics" onclick="switchTab('analytics')">📊 Аналитика</button>
+                <button class="topbar-tab" data-tab="admin" onclick="switchTab('admin')">👤 Админ</button>
+            </div>
+
+            <div class="topbar-spacer"></div>
+
+            <div class="topbar-actions">
+                <button class="topbar-btn" onclick="togglePreview()" title="Live Preview">🖥️ Preview</button>
+                <button class="topbar-btn" onclick="exportCurrentChat()" title="Экспорт">📤 Export</button>
+                <button class="topbar-btn" id="userBtn" onclick="doLogout()">🚪 Выход</button>
+            </div>
+        </div>
+
+        <!-- Model chips bar -->
+        <div id="modelChipsBar" class="model-chips">
+            <div class="model-chip red" data-variant="original" onclick="setVariant('original')">🔴 Оригинал (Grok)</div>
+            <div class="model-chip green active" data-variant="premium" onclick="setVariant('premium')">🟢 Премиум (MiniMax M2.5)</div>
+            <div class="model-chip blue" data-variant="budget" onclick="setVariant('budget')">🔵 Бюджет (DeepSeek)</div>
+
+            <div class="enhanced-toggle">
+                <span>Усиленная проверка (4 агента)</span>
+                <div id="enhancedToggle" class="toggle-switch" onclick="toggleEnhanced()"></div>
+            </div>
+        </div>
+
+        <!-- Tab content: Chat -->
+        <div id="tabChat" class="chat-container">
+            <div id="chatMessages" class="chat-messages">
+                <!-- Welcome message -->
+                <div class="message assistant">
+                    <div class="message-avatar">SA</div>
+                    <div class="message-body">
+                        <div class="message-content">
+                            👋 <strong>Привет! Я Super Agent</strong> — ваш автономный AI-инженер.<br><br>
+                            Я могу:<br>
+                            • Писать код на любом языке<br>
+                            • Создавать лендинги и UI/UX дизайн<br>
+                            • Настраивать API, серверы, workflows<br>
+                            • Работать по SSH и автоматизировать задачи<br><br>
+                            Выберите шаблон ниже или опишите задачу.
+                        </div>
+                        <div class="message-meta">
+                            <span>🟢 MiniMax M2.5</span>
+                            <span>•</span>
+                            <span>только что</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input area -->
+            <div class="chat-input-area">
+                <div class="quick-templates">
+                    <button class="template-btn" onclick="sendTemplate('Сделай лендинг для SaaS продукта с hero, фичами и CTA')">🚀 Лендинг SaaS</button>
+                    <button class="template-btn" onclick="sendTemplate('Создай REST API на FastAPI с CRUD и авторизацией')">⚡ REST API</button>
+                    <button class="template-btn" onclick="sendTemplate('Сделай дашборд на React с графиками и таблицами')">📊 Дашборд</button>
+                    <button class="template-btn" onclick="sendTemplate('Создай Telegram бота на Python с inline-кнопками')">🤖 Telegram Bot</button>
+                    <button class="template-btn" onclick="sendTemplate('Создай n8n workflow для автоматизации')">🔄 n8n Workflow</button>
+                </div>
+
+                <div class="input-wrapper">
+                    <textarea id="chatInput" placeholder="Опишите задачу... (Ctrl+Enter для отправки)" rows="1" oninput="autoResize(this)" onkeydown="handleInputKey(event)"></textarea>
+                    <div class="input-actions">
+                        <button class="input-btn" onclick="triggerFileUpload()" title="Прикрепить файл">📎</button>
+                        <input type="file" id="fileInput" style="display:none" onchange="handleFileUpload(this)" multiple accept=".zip,.tar,.gz,.py,.js,.ts,.html,.css,.json,.md,.txt,.yaml,.yml,.toml,.jsx,.tsx,.vue,.svelte,.go,.rs,.rb,.php,.java,.cpp,.c,.h,.sql">
+                        <button class="send-btn" id="sendBtn" onclick="sendMessage()">▶ Отправить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab content: Settings -->
+        <div id="tabSettings" class="settings-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:24px;">⚙️ Настройки</h2>
+
+            <div class="settings-section">
+                <div class="settings-section-title">🤖 Вариант системы</div>
+                <div class="settings-card" data-variant="original" onclick="selectVariantCard('original')">
+                    <div class="settings-card-header">
+                        <div class="settings-radio"></div>
+                        <span class="settings-card-title">🔴 Оригинал — Grok Code Fast 1</span>
+                    </div>
+                    <div class="settings-card-desc">Качество: 72.1% · ~$2,200/мес · Самый мощный</div>
+                </div>
+                <div class="settings-card selected" data-variant="premium" onclick="selectVariantCard('premium')">
+                    <div class="settings-card-header">
+                        <div class="settings-radio"></div>
+                        <span class="settings-card-title">🟢 Премиум — MiniMax M2.5</span>
+                        <span class="badge badge-recommended">⭐ Рекомендуется</span>
+                    </div>
+                    <div class="settings-card-desc">Качество: 80.2% · ~$1,750/мес · Лучшее соотношение цена/качество</div>
+                </div>
+                <div class="settings-card" data-variant="budget" onclick="selectVariantCard('budget')">
+                    <div class="settings-card-header">
+                        <div class="settings-radio"></div>
+                        <span class="settings-card-title">🔵 Бюджет — DeepSeek V3.2</span>
+                    </div>
+                    <div class="settings-card-desc">Качество: 75.8% · ~$750/мес · Самый дешёвый</div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">💬 Chat-модель (для русского языка)</div>
+                <div class="settings-card selected" data-chatmodel="qwen3" onclick="selectChatModel('qwen3')">
+                    <div class="settings-card-header">
+                        <div class="settings-radio"></div>
+                        <span class="settings-card-title">Qwen3 235B</span>
+                        <span class="badge badge-recommended">⭐ Лучший русский</span>
+                    </div>
+                    <div class="settings-card-desc">RU ⭐⭐⭐⭐⭐ · $0.10/$0.60 · ~400ms</div>
+                </div>
+                <div class="settings-card" data-chatmodel="deepseek" onclick="selectChatModel('deepseek')">
+                    <div class="settings-card-header">
+                        <div class="settings-radio"></div>
+                        <span class="settings-card-title">DeepSeek V3.2</span>
+                    </div>
+                    <div class="settings-card-desc">RU ⭐⭐⭐⭐⭐ · $0.26/$0.38 · ~350ms</div>
+                </div>
+                <div class="settings-card" data-chatmodel="gpt5nano" onclick="selectChatModel('gpt5nano')">
+                    <div class="settings-card-header">
+                        <div class="settings-radio"></div>
+                        <span class="settings-card-title">GPT-5 Nano</span>
+                    </div>
+                    <div class="settings-card-desc">RU ⭐⭐⭐⭐ · $0.05/$0.40 · ~300ms · Самый быстрый</div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">🛡️ Режим проверки</div>
+                <div class="settings-card" id="enhancedCard" onclick="toggleEnhancedSetting()">
+                    <div class="settings-card-header">
+                        <div id="enhancedCheckbox" style="width:18px;height:18px;border:2px solid var(--border-color);border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;"></div>
+                        <span class="settings-card-title">Усиленная проверка (4 агента)</span>
+                    </div>
+                    <div class="settings-card-desc">Architect → Coder → Reviewer → QA · +150% к стоимости · Максимальное качество</div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">🎨 Design Pro</div>
+                <div class="settings-card" id="designProCard" onclick="toggleDesignPro()">
+                    <div class="settings-card-header">
+                        <div id="designProCheckbox" style="width:18px;height:18px;border:2px solid var(--border-color);border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;"></div>
+                        <span class="settings-card-title">Включить Design Pro</span>
+                    </div>
+                    <div class="settings-card-desc">Референсы, AI-изображения, Vision-анализ · +$10-20/мес</div>
+                </div>
+            </div>
+
+            <button class="settings-save-btn" onclick="saveSettings()">💾 Сохранить настройки</button>
+        </div>
+
+        <!-- Tab content: Analytics -->
+        <div id="tabAnalytics" class="analytics-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:24px;">📊 Аналитика</h2>
+            <div id="analyticsContent">
+                <div class="analytics-grid" id="statsGrid"></div>
+                <div id="comparisonSection"></div>
+                <div id="chatStatsSection"></div>
+            </div>
+        </div>
+
+        <!-- Tab content: Admin -->
+        <div id="tabAdmin" class="admin-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:24px;">👤 Админ-панель</h2>
+            <div id="adminStatsGrid" class="analytics-grid" style="margin-bottom:24px;"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <h3 style="font-size:16px;font-weight:600;">Пользователи</h3>
+                <button class="admin-btn" onclick="showCreateUserModal()" style="background:var(--accent-primary);color:white;border:none;padding:8px 16px;border-radius:var(--radius-sm);font-weight:600;">+ Создать</button>
+            </div>
+            <div id="usersTable"></div>
+        </div>
+    </div>
+
+    <!-- ── Preview Panel ── -->
+    <div id="previewPanel" class="preview-panel hidden">
+        <div class="preview-header">
+            <div class="preview-status">
+                <div class="dot"></div>
+                <span>Live Preview</span>
+            </div>
+            <button class="preview-close" onclick="togglePreview()">✕</button>
+        </div>
+        <div class="preview-tabs">
+            <button class="preview-tab active" onclick="switchPreviewTab('render')">🌐 Render</button>
+            <button class="preview-tab" onclick="switchPreviewTab('code')">📝 Code</button>
+            <button class="preview-tab" onclick="switchPreviewTab('console')">🖥️ Console</button>
+        </div>
+        <div class="preview-toolbar">
+            <div class="preview-toolbar-btns">
+                <button class="preview-toolbar-btn" onclick="refreshPreview()">🔄 Refresh</button>
+                <button class="preview-toolbar-btn" onclick="openPreviewNewTab()">↗ Open</button>
+            </div>
+            <div class="preview-toolbar-btns">
+                <button class="preview-toolbar-btn active" data-device="desktop" onclick="setPreviewDevice('desktop')">🖥️</button>
+                <button class="preview-toolbar-btn" data-device="tablet" onclick="setPreviewDevice('tablet')">📱</button>
+                <button class="preview-toolbar-btn" data-device="mobile" onclick="setPreviewDevice('mobile')">📲</button>
+            </div>
+        </div>
+        <div class="preview-body" id="previewBody">
+            <div class="preview-placeholder" id="previewPlaceholder">
+                <div class="icon">🌐</div>
+                <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Live Preview</div>
+                <div style="font-size:12px;">Нажмите 👁 Preview у блока кода</div>
+            </div>
+            <iframe id="previewIframe" class="preview-iframe hidden"></iframe>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Create User Modal ═══ -->
+<div id="createUserModal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-title">Создать пользователя</div>
+        <input type="email" id="newUserEmail" class="settings-input" placeholder="Email" style="margin-bottom:10px;">
+        <input type="text" id="newUserName" class="settings-input" placeholder="Имя" style="margin-bottom:10px;">
+        <input type="password" id="newUserPassword" class="settings-input" placeholder="Пароль" style="margin-bottom:10px;">
+        <input type="number" id="newUserLimit" class="settings-input" placeholder="Лимит $/мес" value="100" style="margin-bottom:16px;">
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="admin-btn" onclick="closeModal('createUserModal')">Отмена</button>
+            <button class="settings-save-btn" onclick="createUser()">Создать</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Toast Container ═══ -->
+<div id="toastContainer" class="toast-container"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
