@@ -502,7 +502,7 @@ def edit_image(filepath: str, instruction: str,
             text = text_match.group(1) if text_match else "Super Agent"
             img = _add_text_to_image(img, text)
 
-        elif any(kw in instruction_lower for kw in ["рамка", "border", "frame"]):
+        elif any(kw in instruction_lower for kw in ["рамк", "border", "frame"]):
             img = ImageOps.expand(img, border=20, fill='#6366f1')
 
         else:
@@ -566,7 +566,7 @@ def _remove_background(img):
 
 def _apply_sepia(img):
     """Apply sepia tone filter."""
-    from PIL import ImageOps
+    from PIL import Image, ImageOps
     gray = ImageOps.grayscale(img)
     sepia = Image.merge("RGB", (
         gray.point(lambda x: min(255, int(x * 1.2 + 40))),
