@@ -129,6 +129,8 @@
 
         <div class="sidebar-nav">
             <button class="nav-item active" data-tab="chat" onclick="switchTab('chat')"><span class="nav-icon">💬</span> Чат</button>
+            <button class="nav-item" data-tab="canvas" onclick="switchTab('canvas')"><span class="nav-icon">📝</span> Canvas</button>
+            <button class="nav-item" data-tab="templates" onclick="switchTab('templates')"><span class="nav-icon">📋</span> Шаблоны</button>
             <button class="nav-item" data-tab="settings" onclick="switchTab('settings')"><span class="nav-icon">⚙️</span> Настройки</button>
             <button class="nav-item" data-tab="memory" onclick="switchTab('memory')"><span class="nav-icon">🧠</span> Память</button>
             <button class="nav-item" data-tab="versions" onclick="switchTab('versions')"><span class="nav-icon">📂</span> Версии</button>
@@ -150,6 +152,8 @@
 
             <div class="topbar-tabs">
                 <button class="topbar-tab active" data-tab="chat" onclick="switchTab('chat')">💬 Чат</button>
+                <button class="topbar-tab" data-tab="canvas" onclick="switchTab('canvas')">📝 Canvas</button>
+                <button class="topbar-tab" data-tab="templates" onclick="switchTab('templates')">📋 Шаблоны</button>
                 <button class="topbar-tab" data-tab="settings" onclick="switchTab('settings')">⚙️ Настройки</button>
                 <button class="topbar-tab" data-tab="memory" onclick="switchTab('memory')">🧠 Память</button>
                 <button class="topbar-tab" data-tab="versions" onclick="switchTab('versions')">📂 Версии</button>
@@ -498,6 +502,51 @@
                 <h3 style="font-size:16px;font-weight:600;margin-bottom:16px;">💬 Все чаты и переписки</h3>
                 <div id="adminChatsTable"></div>
             </div>
+        </div>
+
+        <!-- Tab content: Canvas -->
+        <div id="tabCanvas" class="canvas-panel hidden">
+            <div class="canvas-header">
+                <h2 style="font-size:22px;font-weight:700;margin-bottom:0;">📝 Canvas</h2>
+                <button class="canvas-new-btn" onclick="createNewCanvas()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Новый Canvas
+                </button>
+            </div>
+            <p style="color:var(--text-secondary);margin-bottom:20px;">Итеративные документы — как Google Docs, но с AI. Создавайте и редактируйте документы вместе с агентом.</p>
+            <div id="canvasList" class="canvas-list"></div>
+            <div id="canvasEditor" class="canvas-editor hidden">
+                <div class="canvas-editor-toolbar">
+                    <input type="text" id="canvasTitle" class="canvas-title-input" placeholder="Название документа...">
+                    <select id="canvasType" class="canvas-type-select">
+                        <option value="document">📄 Документ</option>
+                        <option value="code">💻 Код</option>
+                        <option value="markdown">📝 Markdown</option>
+                        <option value="spreadsheet">📊 Таблица</option>
+                    </select>
+                    <button class="canvas-save-btn" onclick="saveCanvas()">💾 Сохранить</button>
+                    <button class="canvas-back-btn" onclick="backToCanvasList()">← Назад</button>
+                </div>
+                <textarea id="canvasContent" class="canvas-content-area" placeholder="Начните писать..."></textarea>
+                <div class="canvas-ai-bar">
+                    <input type="text" id="canvasAiPrompt" class="canvas-ai-input" placeholder="Попросите AI отредактировать, дополнить, переписать...">
+                    <button class="canvas-ai-btn" onclick="canvasAiEdit()">🤖 AI Редактировать</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab content: Templates -->
+        <div id="tabTemplates" class="templates-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:8px;">📋 Шаблоны промптов</h2>
+            <p style="color:var(--text-secondary);margin-bottom:20px;">Готовые шаблоны для частых задач. Нажмите на шаблон, чтобы начать новый чат с ним.</p>
+            <div class="templates-filter">
+                <button class="template-filter-btn active" onclick="filterTemplates('all')">Все</button>
+                <button class="template-filter-btn" onclick="filterTemplates('dev')">💻 Разработка</button>
+                <button class="template-filter-btn" onclick="filterTemplates('analytics')">📊 Аналитика</button>
+                <button class="template-filter-btn" onclick="filterTemplates('creative')">🎨 Креатив</button>
+                <button class="template-filter-btn" onclick="filterTemplates('devops')">⚙️ DevOps</button>
+            </div>
+            <div id="templatesList" class="templates-grid"></div>
         </div>
     </div>
 

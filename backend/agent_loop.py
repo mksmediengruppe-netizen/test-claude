@@ -1,13 +1,17 @@
 """
-Agent Loop v5.0 — LangGraph StatefulGraph Architecture.
+Agent Loop v6.0 — LangGraph StatefulGraph Architecture.
 
-Полный рефакторинг на LangGraph:
+Super Agent v6.0 Full Feature Set:
 - StateGraph с типизированным AgentState (TypedDict)
-- SqliteSaver checkpointer для persistence (resume после рестарта)
-- Retry Policy на все внешние вызовы (LLM, SSH, HTTP)
-- Idempotency на мутирующие операции (file_write, ssh с побочными эффектами)
-- Self-Healing 2.0: автоматическое обнаружение ошибок, 3 варианта исправления
-- Граф: plan -> execute -> verify -> (heal|complete)
+- SqliteSaver checkpointer для persistence
+- Retry Policy + Circuit Breaker на все внешние вызовы
+- Idempotency на мутирующие операции
+- Self-Healing 2.0: автоматическое обнаружение ошибок
+- Creative Suite: generate_image, edit_image, create_artifact, generate_design
+- Web Search & Live Data: web_search, web_fetch с кешированием
+- Multi-Model Routing: classify_complexity, fallback chains
+- Security: rate limiting, prompt injection detection
+- Memory & Projects: persistent memory, canvas, custom agents
 
 Совместимость: run_stream() и run_multi_agent_stream() сохраняют тот же SSE API.
 """
@@ -319,6 +323,87 @@ TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
+            "name": "edit_image",
+            "description": "Edit an existing image: resize, crop, add text/watermark, adjust colors, apply filters, convert format. Use when user wants to modify an uploaded or generated image.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Path to the image file to edit"},
+                    "operations": {"type": "array", "description": "List of operations: [{type: 'resize', width: 800, height: 600}, {type: 'crop', x: 0, y: 0, w: 400, h: 300}, {type: 'text', text: 'Hello', x: 50, y: 50, color: '#fff', size: 24}, {type: 'filter', name: 'blur|sharpen|grayscale|sepia|brightness|contrast'}, {type: 'watermark', text: '...'}, {type: 'rotate', angle: 90}, {type: 'convert', format: 'png|jpg|webp'}]", "items": {"type": "object"}},
+                    "output_filename": {"type": "string", "description": "Output filename", "default": "edited_image.png"}
+                },
+                "required": ["file_path", "operations"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_design",
+            "description": "Generate a professional design: banner, social media post, presentation slide, infographic, business card, logo concept. Returns HTML artifact or image.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "design_type": {"type": "string", "description": "Type: banner, social_post, slide, infographic, business_card, logo, poster, flyer"},
+                    "content": {"type": "object", "description": "Design content: {title: '...', subtitle: '...', body: '...', cta: '...', colors: [...], images: [...]}"},
+                    "style": {"type": "string", "description": "Style: modern, minimal, corporate, creative, elegant, bold", "default": "modern"},
+                    "dimensions": {"type": "object", "description": "Size: {width: 1200, height: 630}", "default": {}}
+                },
+                "required": ["design_type", "content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "store_memory",
+            "description": "Store important information in persistent memory for future conversations. Use to remember user preferences, project details, key facts, decisions made.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "Memory key/topic (e.g. 'user_preferences', 'project_stack', 'server_config')"},
+                    "value": {"type": "string", "description": "Information to remember"},
+                    "category": {"type": "string", "description": "Category: preference, fact, project, decision, context", "default": "fact"}
+                },
+                "required": ["key", "value"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "recall_memory",
+            "description": "Recall stored information from persistent memory. Search by key or category.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query or key to recall"},
+                    "category": {"type": "string", "description": "Filter by category (optional)"}
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "canvas_create",
+            "description": "Create or update a collaborative canvas document. Canvas is a persistent editable document (like Google Docs) that can be iteratively refined. Use for long documents, code projects, plans that need multiple revisions.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Canvas document title"},
+                    "content": {"type": "string", "description": "Full content (Markdown, code, or HTML)"},
+                    "canvas_type": {"type": "string", "description": "Type: document, code, plan, design", "default": "document"},
+                    "canvas_id": {"type": "string", "description": "Existing canvas ID to update (omit for new)"}
+                },
+                "required": ["title", "content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "task_complete",
             "description": "Mark the task as complete. Call this when all steps are done and verified.",
             "parameters": {
@@ -386,6 +471,13 @@ AGENT_SYSTEM_PROMPT = """Ты — Super Agent v6.0, автономный AI-ин
 
 🎨 КРЕАТИВ:
 - generate_image: сгенерировать картинку (диаграмма, график, иллюстрация, лого, мокап)
+- edit_image: редактировать изображение (resize, crop, text, watermark, filters, rotate, convert)
+- generate_design: создать профессиональный дизайн (баннер, пост, слайд, инфографика, визитка, лого)
+
+🧠 ПАМЯТЬ И ПРОЕКТЫ:
+- store_memory: сохранить важную информацию в постоянную память (предпочтения, факты, решения)
+- recall_memory: вспомнить сохранённую информацию из памяти
+- canvas_create: создать/обновить Canvas документ (как Google Docs — для итеративной работы)
 
 ✅ ЗАВЕРШЕНИЕ:
 - task_complete: завершить задачу
@@ -400,17 +492,21 @@ AGENT_SYSTEM_PROMPT = """Ты — Super Agent v6.0, автономный AI-ин
 7. Если просит UI/лендинг/мокап — create_artifact с HTML/CSS
 8. Если просит отчёт — generate_report с графиками и таблицами
 9. Если просит проанализировать скриншот/фото — analyze_image
-10. После каждого действия проверяй результат и исправляй ошибки.
-11. Когда всё готово — вызови task_complete.
-12. Если нужны SSH-данные и не указаны — спроси у пользователя.
-13. Работай пошагово: планируй → выполняй → проверяй → итерируй.
-14. Отвечай на русском языке.
-15. При ошибке — анализируй причину и пробуй исправить (до 3 попыток).
-16. ВСЕГДА давай ссылки на скачивание: [📥 Скачать filename](download_url)
-17. Все URL оформляй как кликабельные ссылки: [текст](url)
-18. При веб-поиске ВСЕГДА указывай источники: [Источник](url)
-19. Для графиков и артефактов — показывай их inline в чате.
-20. Если загружен файл с данными — предложи анализ, визуализацию, выводы.
+10. Если просит редактировать изображение — edit_image
+11. Если просит дизайн (баннер, пост, визитка) — generate_design
+12. Запоминай важные факты через store_memory, вспоминай через recall_memory
+13. Для длинных документов используй canvas_create для итеративной работы
+14. После каждого действия проверяй результат и исправляй ошибки.
+15. Когда всё готово — вызови task_complete.
+16. Если нужны SSH-данные и не указаны — спроси у пользователя.
+17. Работай пошагово: планируй → выполняй → проверяй → итерируй.
+18. Отвечай на русском языке.
+19. При ошибке — анализируй причину и пробуй исправить (до 3 попыток).
+20. ВСЕГДА давай ссылки на скачивание: [📥 Скачать filename](download_url)
+21. Все URL оформляй как кликабельные ссылки: [текст](url)
+22. При веб-поиске ВСЕГДА указывай источники: [Источник](url)
+23. Для графиков и артефактов — показывай их inline в чате.
+24. Если загружен файл с данными — предложи анализ, визуализацию, выводы.
 
 ФОРМАТ ОТВЕТА:
 Кратко опиши что делаешь, затем вызови инструмент.
@@ -473,14 +569,14 @@ class AgentLoop:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://minimax.mksitdev.ru",
-            "X-Title": "Super Agent v5.0"
+            "X-Title": "Super Agent v6.0"
         }
 
         payload = {
             "model": self.model,
             "messages": messages,
             "temperature": 0.2,
-            "max_tokens": 8000,
+            "max_tokens": 16000,
         }
 
         if tools:
@@ -518,14 +614,14 @@ class AgentLoop:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://minimax.mksitdev.ru",
-            "X-Title": "Super Agent v5.0"
+            "X-Title": "Super Agent v6.0"
         }
 
         payload = {
             "model": self.model,
             "messages": messages,
             "temperature": 0.2,
-            "max_tokens": 8000,
+            "max_tokens": 16000,
             "stream": True,
         }
 
@@ -875,6 +971,89 @@ class AgentLoop:
                     return result
                 except Exception as e:
                     return {"success": False, "error": f"Report generation error: {str(e)}"}
+
+            elif tool_name == "edit_image":
+                file_path = args.get("file_path", "")
+                operations = args.get("operations", [])
+                output_filename = args.get("output_filename", "edited_image.png")
+                if not file_path:
+                    return {"success": False, "error": "file_path is required"}
+                try:
+                    from artifact_generator import ArtifactGenerator
+                    gen = ArtifactGenerator(
+                        generated_dir=os.environ.get("GENERATED_DIR", "/var/www/super-agent/backend/generated")
+                    )
+                    result = gen.edit_image(file_path, operations, output_filename)
+                    return result
+                except Exception as e:
+                    return {"success": False, "error": f"Image edit error: {str(e)}"}
+
+            elif tool_name == "generate_design":
+                design_type = args.get("design_type", "banner")
+                content = args.get("content", {})
+                style = args.get("style", "modern")
+                dimensions = args.get("dimensions", {})
+                try:
+                    from artifact_generator import ArtifactGenerator
+                    gen = ArtifactGenerator(
+                        generated_dir=os.environ.get("GENERATED_DIR", "/var/www/super-agent/backend/generated")
+                    )
+                    result = gen.generate_design(design_type, content, style, dimensions)
+                    return result
+                except Exception as e:
+                    return {"success": False, "error": f"Design generation error: {str(e)}"}
+
+            elif tool_name == "store_memory":
+                key = args.get("key", "")
+                value = args.get("value", "")
+                category = args.get("category", "fact")
+                if not key or not value:
+                    return {"success": False, "error": "key and value are required"}
+                try:
+                    from project_manager import ProjectManager
+                    pm = ProjectManager(
+                        data_dir=os.environ.get("DATA_DIR", "/var/www/super-agent/backend/data")
+                    )
+                    user_id = getattr(self, '_user_id', 'default')
+                    result = pm.store_memory(user_id, key, value, category)
+                    return result
+                except Exception as e:
+                    return {"success": False, "error": f"Memory store error: {str(e)}"}
+
+            elif tool_name == "recall_memory":
+                query = args.get("query", "")
+                category = args.get("category")
+                if not query:
+                    return {"success": False, "error": "query is required"}
+                try:
+                    from project_manager import ProjectManager
+                    pm = ProjectManager(
+                        data_dir=os.environ.get("DATA_DIR", "/var/www/super-agent/backend/data")
+                    )
+                    user_id = getattr(self, '_user_id', 'default')
+                    result = pm.recall_memory(user_id, query, category)
+                    return result
+                except Exception as e:
+                    return {"success": False, "error": f"Memory recall error: {str(e)}"}
+
+            elif tool_name == "canvas_create":
+                title = args.get("title", "Untitled")
+                content = args.get("content", "")
+                canvas_type = args.get("canvas_type", "document")
+                canvas_id = args.get("canvas_id")
+                if not content:
+                    return {"success": False, "error": "content is required"}
+                try:
+                    from project_manager import ProjectManager
+                    pm = ProjectManager(
+                        data_dir=os.environ.get("DATA_DIR", "/var/www/super-agent/backend/data")
+                    )
+                    user_id = getattr(self, '_user_id', 'default')
+                    chat_id = getattr(self, '_chat_id', None)
+                    result = pm.canvas_create(user_id, title, content, canvas_type, canvas_id, chat_id)
+                    return result
+                except Exception as e:
+                    return {"success": False, "error": f"Canvas creation error: {str(e)}"}
 
             elif tool_name == "task_complete":
                 summary = args.get("summary", "Task completed")
@@ -1661,6 +1840,33 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
             fn = result.get("filename", "")
             dl = result.get("download_url", "")
             return f"📋 Отчёт создан: {fn} | [Скачать]({dl})"
+
+        elif tool_name == "edit_image":
+            fn = result.get("filename", "")
+            dl = result.get("download_url", "")
+            ops = result.get("operations_applied", 0)
+            return f"✏️ Изображение отредактировано ({ops} операций): {fn} | [Скачать]({dl})"
+
+        elif tool_name == "generate_design":
+            dt = result.get("design_type", "")
+            title = result.get("title", "")
+            preview_url = result.get("preview_url", "")
+            return f"🎨 Дизайн '{title}' ({dt}) | [Открыть]({preview_url})"
+
+        elif tool_name == "store_memory":
+            key = result.get("key", "")
+            return f"🧠 Запомнил: {key}"
+
+        elif tool_name == "recall_memory":
+            memories = result.get("memories", [])
+            return f"🧠 Найдено {len(memories)} воспоминаний"
+
+        elif tool_name == "canvas_create":
+            title = result.get("title", "")
+            canvas_id = result.get("canvas_id", "")
+            is_update = result.get("updated", False)
+            action = "обновлён" if is_update else "создан"
+            return f"📝 Canvas '{title}' {action} (ID: {canvas_id})"
 
         return "✅ Выполнено"
 

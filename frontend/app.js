@@ -1766,6 +1766,8 @@ function switchTab(tab) {
     document.getElementById('tabVersions')?.classList.toggle('hidden', tab !== 'versions');
     document.getElementById('tabAnalytics').classList.toggle('hidden', tab !== 'analytics');
     document.getElementById('tabAdmin').classList.toggle('hidden', tab !== 'admin');
+    document.getElementById('tabCanvas')?.classList.toggle('hidden', tab !== 'canvas');
+    document.getElementById('tabTemplates')?.classList.toggle('hidden', tab !== 'templates');
     const modelBar = document.getElementById('modelSelectorBar') || document.getElementById('modelChipsBar');
     if (modelBar) modelBar.classList.toggle('hidden', tab !== 'chat');
 
@@ -1775,6 +1777,8 @@ function switchTab(tab) {
     if (tab === 'settings') updateSettingsCards();
     if (tab === 'memory') loadMemoryTab();
     if (tab === 'versions') loadVersionsTab();
+    if (tab === 'canvas') loadCanvasTab();
+    if (tab === 'templates') loadTemplatesTab();
 }
 
 function toggleSidebar() {
@@ -2447,13 +2451,251 @@ function initDragDrop() {
     });
 }
 
-// ═══ PWA Registration ═════════════════════════════════════════════
+// ═══ Canvas Functions ═════════════════════════════════════════════════════════
+let _currentCanvasId = null;
+
+async function loadCanvasTab() {
+    try {
+        const data = await api('/canvas?user_id=default');
+        const list = document.getElementById('canvasList');
+        const editor = document.getElementById('canvasEditor');
+        if (!list) return;
+        editor?.classList.add('hidden');
+        list.classList.remove('hidden');
+
+        const canvases = data.canvases || [];
+        if (canvases.length === 0) {
+            list.innerHTML = '<div class="empty-state"><div class="empty-icon">📝</div><h3>Нет Canvas документов</h3><p>Создайте первый документ для итеративной работы с AI</p></div>';
+            return;
+        }
+        list.innerHTML = canvases.map(c => `
+            <div class="canvas-card" onclick="openCanvas('${c.id}')">
+                <div class="canvas-card-icon">${c.canvas_type === 'code' ? '💻' : c.canvas_type === 'markdown' ? '📝' : '📄'}</div>
+                <div class="canvas-card-info">
+                    <div class="canvas-card-title">${c.title || 'Без названия'}</div>
+                    <div class="canvas-card-meta">${c.canvas_type} • ${new Date(c.updated_at || c.created_at).toLocaleDateString('ru')}</div>
+                </div>
+                <button class="canvas-card-delete" onclick="event.stopPropagation(); deleteCanvas('${c.id}')" title="Удалить">🗑️</button>
+            </div>
+        `).join('');
+    } catch (e) {
+        console.error('Canvas load error:', e);
+    }
+}
+
+async function createNewCanvas() {
+    _currentCanvasId = null;
+    const editor = document.getElementById('canvasEditor');
+    const list = document.getElementById('canvasList');
+    if (editor && list) {
+        list.classList.add('hidden');
+        editor.classList.remove('hidden');
+        document.getElementById('canvasTitle').value = '';
+        document.getElementById('canvasContent').value = '';
+        document.getElementById('canvasType').value = 'document';
+    }
+}
+
+async function openCanvas(canvasId) {
+    try {
+        const data = await api(`/canvas/${canvasId}?user_id=default`);
+        if (data.success && data.canvas) {
+            _currentCanvasId = canvasId;
+            const editor = document.getElementById('canvasEditor');
+            const list = document.getElementById('canvasList');
+            list.classList.add('hidden');
+            editor.classList.remove('hidden');
+            document.getElementById('canvasTitle').value = data.canvas.title || '';
+            document.getElementById('canvasContent').value = data.canvas.content || '';
+            document.getElementById('canvasType').value = data.canvas.canvas_type || 'document';
+        }
+    } catch (e) {
+        toast('Ошибка загрузки Canvas: ' + e.message, 'error');
+    }
+}
+
+async function saveCanvas() {
+    const title = document.getElementById('canvasTitle').value || 'Без названия';
+    const content = document.getElementById('canvasContent').value;
+    const canvasType = document.getElementById('canvasType').value;
+    try {
+        if (_currentCanvasId) {
+            await api(`/canvas/${_currentCanvasId}`, 'PUT', { title, content, canvas_type: canvasType, user_id: 'default' });
+        } else {
+            const data = await api('/memory', 'POST', { key: `canvas_${Date.now()}`, value: JSON.stringify({ title, content, canvas_type: canvasType }), category: 'canvas', user_id: 'default' });
+            // Use canvas_create via the agent or direct API
+            const result = await api(`/canvas/new`, 'PUT', { title, content, canvas_type: canvasType, user_id: 'default' });
+            if (result.canvas_id) _currentCanvasId = result.canvas_id;
+        }
+        toast('✅ Canvas сохранён', 'success');
+    } catch (e) {
+        toast('Ошибка сохранения: ' + e.message, 'error');
+    }
+}
+
+function backToCanvasList() {
+    _currentCanvasId = null;
+    document.getElementById('canvasEditor')?.classList.add('hidden');
+    document.getElementById('canvasList')?.classList.remove('hidden');
+    loadCanvasTab();
+}
+
+async function deleteCanvas(canvasId) {
+    if (!confirm('Удалить Canvas?')) return;
+    try {
+        await api(`/canvas/${canvasId}?user_id=default`, 'DELETE');
+        toast('✅ Canvas удалён', 'success');
+        loadCanvasTab();
+    } catch (e) {
+        toast('Ошибка удаления: ' + e.message, 'error');
+    }
+}
+
+async function canvasAiEdit() {
+    const prompt = document.getElementById('canvasAiPrompt')?.value;
+    const content = document.getElementById('canvasContent')?.value;
+    if (!prompt) return;
+    toast('🤖 AI редактирует...', 'info');
+    // Send to chat as a message with canvas context
+    const msg = `Отредактируй следующий документ по инструкции: ${prompt}\n\nДокумент:\n${content}`;
+    switchTab('chat');
+    document.getElementById('userInput').value = msg;
+    sendMessage();
+    document.getElementById('canvasAiPrompt').value = '';
+}
+
+// ═══ Templates Functions ═══════════════════════════════════════════════════════
+let _allTemplates = [];
+
+async function loadTemplatesTab() {
+    try {
+        const data = await api('/templates');
+        _allTemplates = data.templates || [];
+        renderTemplates(_allTemplates);
+    } catch (e) {
+        console.error('Templates load error:', e);
+        // Fallback to hardcoded templates
+        _allTemplates = [
+            {id: 'code_review', name: '🔍 Code Review', prompt: 'Проанализируй код и найди проблемы:', category: 'dev'},
+            {id: 'deploy', name: '🚀 Deploy', prompt: 'Задеплой проект на сервер:', category: 'dev'},
+            {id: 'debug', name: '🐛 Debug', prompt: 'Найди и исправь ошибку:', category: 'dev'},
+            {id: 'analyze_data', name: '📊 Анализ данных', prompt: 'Проанализируй данные и построй графики:', category: 'analytics'},
+            {id: 'write_report', name: '📝 Отчёт', prompt: 'Создай профессиональный отчёт:', category: 'analytics'},
+            {id: 'research', name: '🔍 Исследование', prompt: 'Проведи исследование:', category: 'analytics'},
+            {id: 'create_landing', name: '🌐 Лендинг', prompt: 'Создай красивый лендинг:', category: 'creative'},
+            {id: 'create_design', name: '🎨 Дизайн', prompt: 'Создай профессиональный дизайн:', category: 'creative'},
+            {id: 'server_audit', name: '🛡️ Аудит сервера', prompt: 'Проведи аудит безопасности:', category: 'devops'},
+            {id: 'setup_ci_cd', name: '⚙️ CI/CD', prompt: 'Настрой CI/CD пайплайн:', category: 'devops'},
+            {id: 'monitoring', name: '📊 Мониторинг', prompt: 'Настрой мониторинг:', category: 'devops'}
+        ];
+        renderTemplates(_allTemplates);
+    }
+}
+
+function renderTemplates(templates) {
+    const grid = document.getElementById('templatesList');
+    if (!grid) return;
+    grid.innerHTML = templates.map(t => `
+        <div class="template-card" onclick="useTemplate('${t.id}')">
+            <div class="template-card-name">${t.name}</div>
+            <div class="template-card-prompt">${t.prompt}</div>
+            <div class="template-card-category">${t.category}</div>
+        </div>
+    `).join('');
+}
+
+function filterTemplates(category) {
+    document.querySelectorAll('.template-filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent.toLowerCase().includes(category) || (category === 'all' && btn.textContent === 'Все'));
+    });
+    if (category === 'all') {
+        renderTemplates(_allTemplates);
+    } else {
+        renderTemplates(_allTemplates.filter(t => t.category === category));
+    }
+}
+
+function useTemplate(templateId) {
+    const template = _allTemplates.find(t => t.id === templateId);
+    if (!template) return;
+    switchTab('chat');
+    createNewChat();
+    setTimeout(() => {
+        const input = document.getElementById('userInput');
+        if (input) {
+            input.value = template.prompt + ' ';
+            input.focus();
+            autoResize(input);
+        }
+    }, 300);
+}
+
+// ═══ Enhanced Analytics with Charts ═══════════════════════════════════════════
+async function loadUsageAnalytics() {
+    try {
+        const data = await api('/analytics/usage?user_id=default');
+        if (data.success && data.analytics) {
+            const a = data.analytics;
+            const container = document.getElementById('usageAnalyticsContainer');
+            if (container) {
+                container.innerHTML = `
+                    <div class="analytics-card">
+                        <div class="analytics-card-value">${a.total_chats}</div>
+                        <div class="analytics-card-label">Всего чатов</div>
+                    </div>
+                    <div class="analytics-card">
+                        <div class="analytics-card-value">${a.total_messages}</div>
+                        <div class="analytics-card-label">Всего сообщений</div>
+                    </div>
+                    <div class="analytics-card">
+                        <div class="analytics-card-value">${Object.keys(a.tool_usage || {}).length}</div>
+                        <div class="analytics-card-label">Использовано инструментов</div>
+                    </div>
+                `;
+            }
+        }
+    } catch (e) {
+        console.error('Usage analytics error:', e);
+    }
+}
+
+// ═══ Keyboard Shortcuts (Command Palette) ═══════════════════════════════════
+document.addEventListener('keydown', (e) => {
+    // Ctrl+K or Cmd+K — focus search
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        const search = document.getElementById('chatSearch');
+        if (search) { search.focus(); search.select(); }
+    }
+    // Ctrl+N or Cmd+N — new chat
+    if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        e.preventDefault();
+        createNewChat();
+    }
+    // Escape — close modals, back from canvas
+    if (e.key === 'Escape') {
+        const modal = document.querySelector('.modal.active, .modal-overlay.active');
+        if (modal) modal.click();
+        // Close lightbox if open
+        const lightbox = document.getElementById('imageLightbox');
+        if (lightbox && !lightbox.classList.contains('hidden')) {
+            lightbox.classList.add('hidden');
+        }
+    }
+    // Ctrl+Shift+E — export chat
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'E') {
+        e.preventDefault();
+        exportCurrentChat();
+    }
+});
+// ═══ PWA Registration ═════════════════════════════════════════════════════════
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
-// ═══ Init ═══════════════════════════════════════════════════════
-document.addEventListener('DOMContentLoaded', () => {   // Init theme from localStorage
+// ═══ Init ═════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+    // Init theme from localStorage
     const savedTheme = localStorage.getItem('sa_theme') || 'dark';
     document.documentElement.setAttribute('data-theme', savedTheme);
     updateThemeButton();

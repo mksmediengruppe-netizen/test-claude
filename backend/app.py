@@ -1,8 +1,9 @@
 """
-Super Agent v5.0 — Backend API Server
+Super Agent v6.0 — Backend API Server
 Автономный AI-инженер с мультиагентной системой, SSH executor,
 browser agent, долговременной памятью, file versioning, rate limiting,
 contracts validation, self-healing 2.0, LangGraph StateGraph.
+v6.0: Creative Suite, Web Search, Memory & Projects, Canvas, Multi-Model Routing.
 """
 
 import os
@@ -1991,14 +1992,18 @@ def health():
 
     return jsonify({
         "status": "ok",
-        "version": "5.0",
+        "version": "6.0",
         "name": "Super Agent",
         "features": [
             "langgraph_stategraph", "retry_policy", "idempotency",
             "self_healing_2.0", "vector_memory", "file_versioning",
             "rate_limiting", "contracts", "cross_chat_learning",
             "ssh_executor", "file_manager", "browser_agent",
-            "agent_loop", "multi_agent"
+            "agent_loop", "multi_agent",
+            "creative_suite", "edit_image", "generate_design",
+            "web_search", "web_fetch", "code_interpreter",
+            "canvas", "persistent_memory", "custom_agents",
+            "drag_drop_upload", "message_actions", "markdown_tables"
         ],
         "memory": mem_stats,
         "versioning": ver_stats,
@@ -2024,6 +2029,239 @@ def list_models():
             for k, v in CHAT_MODELS.items()
         }
     })
+
+
+# ══════════════════════════════════════════════════════════════════
+# ██ CANVAS API ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/canvas", methods=["GET"])
+def list_canvases():
+    """List all canvas documents for the user."""
+    try:
+        from project_manager import ProjectManager
+        pm = ProjectManager(data_dir=DATA_DIR)
+        user_id = request.args.get("user_id", "default")
+        canvases = pm.list_canvases(user_id)
+        return jsonify({"success": True, "canvases": canvases})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/canvas/<canvas_id>", methods=["GET"])
+def get_canvas(canvas_id):
+    """Get a specific canvas document."""
+    try:
+        from project_manager import ProjectManager
+        pm = ProjectManager(data_dir=DATA_DIR)
+        user_id = request.args.get("user_id", "default")
+        canvas = pm.get_canvas(user_id, canvas_id)
+        if canvas:
+            return jsonify({"success": True, "canvas": canvas})
+        return jsonify({"success": False, "error": "Canvas not found"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/canvas/<canvas_id>", methods=["PUT"])
+def update_canvas(canvas_id):
+    """Update a canvas document."""
+    try:
+        from project_manager import ProjectManager
+        pm = ProjectManager(data_dir=DATA_DIR)
+        data = request.get_json()
+        user_id = data.get("user_id", "default")
+        title = data.get("title", "")
+        content = data.get("content", "")
+        canvas_type = data.get("canvas_type", "document")
+        result = pm.canvas_create(user_id, title, content, canvas_type, canvas_id)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/canvas/<canvas_id>", methods=["DELETE"])
+def delete_canvas(canvas_id):
+    """Delete a canvas document."""
+    try:
+        from project_manager import ProjectManager
+        pm = ProjectManager(data_dir=DATA_DIR)
+        user_id = request.args.get("user_id", "default")
+        result = pm.delete_canvas(user_id, canvas_id)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# ██ MEMORY API ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/memory", methods=["GET"])
+def list_memories():
+    """List stored memories."""
+    try:
+        from project_manager import ProjectManager
+        pm = ProjectManager(data_dir=DATA_DIR)
+        user_id = request.args.get("user_id", "default")
+        category = request.args.get("category")
+        memories = pm.list_memories(user_id, category)
+        return jsonify({"success": True, "memories": memories})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/memory", methods=["POST"])
+def store_memory_api():
+    """Store a new memory."""
+    try:
+        from project_manager import ProjectManager
+        pm = ProjectManager(data_dir=DATA_DIR)
+        data = request.get_json()
+        user_id = data.get("user_id", "default")
+        key = data.get("key", "")
+        value = data.get("value", "")
+        category = data.get("category", "fact")
+        result = pm.store_memory(user_id, key, value, category)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/memory/<memory_id>", methods=["DELETE"])
+def delete_memory(memory_id):
+    """Delete a memory entry."""
+    try:
+        from project_manager import ProjectManager
+        pm = ProjectManager(data_dir=DATA_DIR)
+        user_id = request.args.get("user_id", "default")
+        result = pm.delete_memory(user_id, memory_id)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# ██ CUSTOM AGENTS API ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/agents/custom", methods=["GET"])
+def list_custom_agents():
+    """List custom agent configurations."""
+    try:
+        from project_manager import ProjectManager
+        pm = ProjectManager(data_dir=DATA_DIR)
+        user_id = request.args.get("user_id", "default")
+        agents = pm.list_custom_agents(user_id)
+        return jsonify({"success": True, "agents": agents})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/agents/custom", methods=["POST"])
+def create_custom_agent():
+    """Create a custom agent."""
+    try:
+        from project_manager import ProjectManager
+        pm = ProjectManager(data_dir=DATA_DIR)
+        data = request.get_json()
+        user_id = data.get("user_id", "default")
+        result = pm.create_custom_agent(user_id, data)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/agents/custom/<agent_id>", methods=["DELETE"])
+def delete_custom_agent(agent_id):
+    """Delete a custom agent."""
+    try:
+        from project_manager import ProjectManager
+        pm = ProjectManager(data_dir=DATA_DIR)
+        user_id = request.args.get("user_id", "default")
+        result = pm.delete_custom_agent(user_id, agent_id)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# ██ TEMPLATES API ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/templates", methods=["GET"])
+def list_templates():
+    """List available prompt templates."""
+    templates = [
+        {"id": "code_review", "name": "🔍 Code Review", "prompt": "Проанализируй код и найди проблемы, уязвимости и предложи улучшения:", "category": "dev"},
+        {"id": "deploy", "name": "🚀 Deploy", "prompt": "Задеплой проект на сервер. Настрой nginx, SSL, systemd сервис:", "category": "dev"},
+        {"id": "debug", "name": "🐛 Debug", "prompt": "Найди и исправь ошибку в коде/конфигурации:", "category": "dev"},
+        {"id": "analyze_data", "name": "📊 Анализ данных", "prompt": "Проанализируй данные, построй графики и сделай выводы:", "category": "analytics"},
+        {"id": "write_report", "name": "📝 Отчёт", "prompt": "Создай профессиональный отчёт с графиками и таблицами на тему:", "category": "analytics"},
+        {"id": "research", "name": "🔍 Исследование", "prompt": "Проведи исследование в интернете и подготовь сводку с источниками:", "category": "analytics"},
+        {"id": "create_landing", "name": "🌐 Лендинг", "prompt": "Создай красивый лендинг с анимациями для:", "category": "creative"},
+        {"id": "create_design", "name": "🎨 Дизайн", "prompt": "Создай профессиональный дизайн (баннер/пост/визитка/лого):", "category": "creative"},
+        {"id": "write_article", "name": "✍️ Статья", "prompt": "Напиши профессиональную статью на тему:", "category": "creative"},
+        {"id": "server_audit", "name": "🛡️ Аудит сервера", "prompt": "Проведи аудит безопасности сервера и исправь проблемы:", "category": "devops"},
+        {"id": "setup_ci_cd", "name": "⚙️ CI/CD", "prompt": "Настрой CI/CD пайплайн для проекта:", "category": "devops"},
+        {"id": "monitoring", "name": "📊 Мониторинг", "prompt": "Настрой мониторинг сервера и приложения:", "category": "devops"}
+    ]
+    category = request.args.get("category")
+    if category:
+        templates = [t for t in templates if t["category"] == category]
+    return jsonify({"success": True, "templates": templates})
+
+
+# ══════════════════════════════════════════════════════════════════
+# ██ USAGE ANALYTICS API ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/analytics/usage", methods=["GET"])
+def get_usage_analytics():
+    """Get usage analytics for the current user."""
+    try:
+        db = _load_db()
+        user_id = request.args.get("user_id", "default")
+        chats = db.get("chats", {})
+        
+        total_messages = 0
+        total_chats = 0
+        tool_usage = {}
+        daily_messages = {}
+        
+        for chat_id, chat in chats.items():
+            if chat.get("user_id", "default") == user_id or user_id == "default":
+                total_chats += 1
+                messages = chat.get("messages", [])
+                total_messages += len(messages)
+                
+                for msg in messages:
+                    # Track daily messages
+                    ts = msg.get("timestamp", "")
+                    if ts:
+                        day = ts[:10]
+                        daily_messages[day] = daily_messages.get(day, 0) + 1
+                    
+                    # Track tool usage from agent actions
+                    if msg.get("role") == "assistant":
+                        content = msg.get("content", "")
+                        for tool_name in ["ssh_execute", "file_write", "file_read", "browser_navigate",
+                                         "web_search", "code_interpreter", "generate_file", "generate_image",
+                                         "generate_chart", "create_artifact", "edit_image", "generate_design"]:
+                            if tool_name in content:
+                                tool_usage[tool_name] = tool_usage.get(tool_name, 0) + 1
+        
+        return jsonify({
+            "success": True,
+            "analytics": {
+                "total_chats": total_chats,
+                "total_messages": total_messages,
+                "tool_usage": tool_usage,
+                "daily_messages": daily_messages
+            }
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 if __name__ == "__main__":
