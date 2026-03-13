@@ -363,12 +363,23 @@ function renderChatList() {
         const time = formatTime(c.updated_at);
         const variantEmoji = c.variant === 'original' ? '🔴' : c.variant === 'budget' ? '🔵' : '🟢';
 
-        return `<div class="chat-item ${isActive ? 'active' : ''}" onclick="openChat('${c.id}')">
-            <div class="chat-item-title">${escapeHtml(c.title)}</div>
+        return `<div class="chat-item ${isActive ? 'active' : ''}" onclick="openChat('${c.id}')" data-chat-id="${c.id}">
+            <div class="chat-item-header">
+                <div class="chat-item-title" id="chatTitle_${c.id}">${escapeHtml(c.title)}</div>
+                <button class="chat-item-menu-btn" onclick="event.stopPropagation(); toggleChatMenu('${c.id}')" title="Действия">⋮</button>
+            </div>
             <div class="chat-item-meta">
                 <span>${time}</span>
                 <span class="chat-item-cost">$${c.total_cost.toFixed(2)}</span>
                 <span class="chat-item-model">${variantEmoji}</span>
+            </div>
+            <div class="chat-context-menu" id="chatMenu_${c.id}">
+                <button class="chat-menu-action" onclick="event.stopPropagation(); startRenameChat('${c.id}')">
+                    ✏️ Переименовать
+                </button>
+                <button class="chat-menu-action chat-menu-delete" onclick="event.stopPropagation(); confirmDeleteChat('${c.id}', '${escapeHtml(c.title).replace(/'/g, "\\'")}')"> 
+                    🗑️ Удалить
+                </button>
             </div>
         </div>`;
     }).join('');
@@ -403,10 +414,123 @@ async function openChat(chatId) {
     }
 }
 
-async function deleteChat(chatId, event) {
-    event.stopPropagation();
-    if (!confirm('Удалить этот чат?')) return;
+// ── Chat Context Menu ─────────────────────────────────────────
+let openMenuId = null;
 
+function toggleChatMenu(chatId) {
+    // Close any open menu first
+    if (openMenuId && openMenuId !== chatId) {
+        const prevMenu = document.getElementById(`chatMenu_${openMenuId}`);
+        if (prevMenu) prevMenu.classList.remove('visible');
+    }
+    const menu = document.getElementById(`chatMenu_${chatId}`);
+    if (!menu) return;
+    menu.classList.toggle('visible');
+    openMenuId = menu.classList.contains('visible') ? chatId : null;
+}
+
+// Close menu on click outside
+document.addEventListener('click', () => {
+    if (openMenuId) {
+        const menu = document.getElementById(`chatMenu_${openMenuId}`);
+        if (menu) menu.classList.remove('visible');
+        openMenuId = null;
+    }
+});
+
+// ── Rename Chat ──────────────────────────────────────────────
+function startRenameChat(chatId) {
+    // Close context menu
+    const menu = document.getElementById(`chatMenu_${chatId}`);
+    if (menu) menu.classList.remove('visible');
+    openMenuId = null;
+
+    const titleEl = document.getElementById(`chatTitle_${chatId}`);
+    if (!titleEl) return;
+
+    const currentTitle = state.chats.find(c => c.id === chatId)?.title || '';
+    
+    // Replace title with input
+    titleEl.outerHTML = `<input type="text" class="chat-rename-input" id="chatRenameInput_${chatId}" 
+        value="${escapeHtml(currentTitle)}" 
+        onclick="event.stopPropagation()" 
+        onkeydown="handleRenameKey(event, '${chatId}')" 
+        onblur="finishRenameChat('${chatId}')">`;
+    
+    const input = document.getElementById(`chatRenameInput_${chatId}`);
+    if (input) {
+        input.focus();
+        input.select();
+    }
+}
+
+function handleRenameKey(event, chatId) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        finishRenameChat(chatId);
+    } else if (event.key === 'Escape') {
+        event.preventDefault();
+        cancelRenameChat(chatId);
+    }
+}
+
+async function finishRenameChat(chatId) {
+    const input = document.getElementById(`chatRenameInput_${chatId}`);
+    if (!input) return;
+    
+    const newTitle = input.value.trim();
+    const chat = state.chats.find(c => c.id === chatId);
+    if (!chat) return;
+
+    if (!newTitle || newTitle === chat.title) {
+        renderChatList();
+        return;
+    }
+
+    try {
+        await api(`/chats/${chatId}/rename`, {
+            method: 'PUT',
+            body: JSON.stringify({ title: newTitle })
+        });
+        chat.title = newTitle;
+        if (state.currentChat && state.currentChat.id === chatId) {
+            state.currentChat.title = newTitle;
+        }
+        renderChatList();
+        toast('Чат переименован', 'success');
+    } catch (e) {
+        toast('Ошибка: ' + e.message, 'error');
+        renderChatList();
+    }
+}
+
+function cancelRenameChat(chatId) {
+    renderChatList();
+}
+
+// ── Delete Chat with Confirmation Modal ──────────────────────
+let pendingDeleteChatId = null;
+
+function confirmDeleteChat(chatId, chatTitle) {
+    // Close context menu
+    const menu = document.getElementById(`chatMenu_${chatId}`);
+    if (menu) menu.classList.remove('visible');
+    openMenuId = null;
+
+    pendingDeleteChatId = chatId;
+    document.getElementById('deleteChatTitle').textContent = chatTitle || 'Без названия';
+    document.getElementById('deleteChatModal').classList.add('active');
+}
+
+function cancelDeleteChat() {
+    pendingDeleteChatId = null;
+    document.getElementById('deleteChatModal').classList.remove('active');
+}
+
+async function executeDeleteChat() {
+    if (!pendingDeleteChatId) return;
+    const chatId = pendingDeleteChatId;
+    
     try {
         await api(`/chats/${chatId}`, { method: 'DELETE' });
         state.chats = state.chats.filter(c => c.id !== chatId);
@@ -418,7 +542,14 @@ async function deleteChat(chatId, event) {
         toast('Чат удалён', 'info');
     } catch (e) {
         toast('Ошибка: ' + e.message, 'error');
+    } finally {
+        cancelDeleteChat();
     }
+}
+
+async function deleteChat(chatId, event) {
+    if (event) event.stopPropagation();
+    confirmDeleteChat(chatId, state.chats.find(c => c.id === chatId)?.title);
 }
 
 function renderChatMessages() {

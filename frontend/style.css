@@ -272,6 +272,116 @@ a:hover { text-decoration: underline; }
     font-size: 10px;
 }
 
+/* Chat item header with menu button */
+.chat-item-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.chat-item-header .chat-item-title {
+    flex: 1;
+    min-width: 0;
+}
+
+.chat-item-menu-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: all var(--transition);
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.chat-item:hover .chat-item-menu-btn {
+    opacity: 1;
+}
+
+.chat-item-menu-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+/* Chat context menu */
+.chat-context-menu {
+    display: none;
+    position: absolute;
+    right: 8px;
+    top: 100%;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    z-index: 100;
+    min-width: 160px;
+    padding: 4px;
+    animation: menuFadeIn 0.15s ease;
+}
+
+.chat-context-menu.visible {
+    display: flex;
+    flex-direction: column;
+}
+
+@keyframes menuFadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.chat-menu-action {
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    padding: 8px 12px;
+    text-align: left;
+    cursor: pointer;
+    font-size: 13px;
+    border-radius: 4px;
+    transition: background var(--transition);
+    white-space: nowrap;
+}
+
+.chat-menu-action:hover {
+    background: var(--bg-tertiary);
+}
+
+.chat-menu-delete {
+    color: var(--accent-red);
+}
+
+.chat-menu-delete:hover {
+    background: var(--accent-red-bg);
+}
+
+/* Chat item needs relative for context menu */
+.chat-item {
+    position: relative;
+}
+
+/* Inline rename input */
+.chat-rename-input {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--accent-primary);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 13px;
+    padding: 3px 6px;
+    font-weight: 500;
+    outline: none;
+    font-family: inherit;
+}
+
+.chat-rename-input:focus {
+    border-color: var(--accent-hover);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
 /* New chat button */
 .new-chat-btn {
     margin: 12px 16px 16px;

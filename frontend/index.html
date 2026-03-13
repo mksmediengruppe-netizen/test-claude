@@ -464,6 +464,21 @@
     </div>
 </div>
 
+<!-- ═══ Delete Chat Confirmation Modal ═══ -->
+<div id="deleteChatModal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-title">🗑️ Удалить чат?</div>
+        <p style="color:var(--text-secondary);margin-bottom:8px;font-size:14px;">Вы уверены, что хотите удалить этот чат? Это действие нельзя отменить.</p>
+        <div style="background:var(--bg-tertiary);padding:10px 14px;border-radius:8px;margin-bottom:16px;border:1px solid var(--border-color);">
+            <span style="color:var(--text-primary);font-weight:600;font-size:14px;" id="deleteChatTitle"></span>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="admin-btn" onclick="cancelDeleteChat()">Отмена</button>
+            <button class="settings-save-btn" style="background:var(--accent-red);" onclick="executeDeleteChat()">🗑️ Удалить</button>
+        </div>
+    </div>
+</div>
+
 <!-- ═══ Toast Container ═══ -->
 <div id="toastContainer" class="toast-container"></div>
 
