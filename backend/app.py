@@ -777,6 +777,9 @@ def send_message(chat_id):
     config = MODEL_CONFIGS.get(variant, MODEL_CONFIGS["premium"])
     model = config["coding"]["model"]
     model_name = config["coding"]["name"]
+    # Separate model for Agent Mode (must support OpenAI tool calling)
+    agent_model = config["tools"]["model"]
+    agent_model_name = config["tools"]["name"]
 
     # Detect if this is an agent task (needs SSH/files/browser) or simple chat
     # Agent keywords — actions that require real execution on servers
@@ -821,8 +824,9 @@ def send_message(chat_id):
     def generate():
         full_response = ""
 
-        # Send metadata
-        yield f"data: {json.dumps({'type': 'meta', 'variant': variant, 'model': model_name, 'enhanced': enhanced, 'agent_mode': is_agent_task and has_ssh})}\n\n"
+        # Send metadata — show agent model name when in agent mode
+        active_model_name = agent_model_name if (is_agent_task and has_ssh) else model_name
+        yield f"data: {json.dumps({'type': 'meta', 'variant': variant, 'model': active_model_name, 'enhanced': enhanced, 'agent_mode': is_agent_task and has_ssh})}\n\n"
 
         if is_agent_task and has_ssh:
             # ═══ AGENT MODE: Real execution with SSH/Browser/Files ═══
@@ -831,7 +835,7 @@ def send_message(chat_id):
             if enhanced:
                 # Multi-agent pipeline
                 agent = MultiAgentLoop(
-                    model=model,
+                    model=agent_model,
                     api_key=OPENROUTER_API_KEY,
                     api_url=OPENROUTER_BASE_URL,
                     ssh_credentials=ssh_credentials
@@ -839,7 +843,7 @@ def send_message(chat_id):
             else:
                 # Single agent loop
                 agent = AgentLoop(
-                    model=model,
+                    model=agent_model,
                     api_key=OPENROUTER_API_KEY,
                     api_url=OPENROUTER_BASE_URL,
                     ssh_credentials=ssh_credentials
