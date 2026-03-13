@@ -876,37 +876,29 @@ def send_message(chat_id):
     if ssh_from_msg:
         is_agent_task = True
 
-    # If file task detected — force agent mode for file generation
-    # This works regardless of SSH — generate_file/generate_image don't need SSH
-    if is_file_task and not is_agent_task:
-        is_agent_task = True
-
     # Also check if SSH credentials are configured
     has_ssh = bool(ssh_credentials.get("host") and ssh_credentials.get("password"))
 
-    # Lite Agent Mode: file/image generation when NO SSH configured
-    # If SSH IS configured, file tasks run in full Agent Mode (which also has generate_file)
-    is_lite_agent = is_file_task and not has_ssh and not (is_agent_task and has_ssh)
+    # Lite Agent Mode: file/image generation without SSH
+    is_lite_agent = is_file_task and not has_ssh and not is_agent_task
 
     # Build chat history for context
     history = [{"role": m["role"], "content": m["content"]} for m in chat["messages"][-10:]]
 
     def generate():
-        full_response = ""
-
-        # Send metadata — show agent model name when in agent mode
+        full_response = "        # Send metadata — show agent model name when in agent mode
         active_model_name = agent_model_name if (is_agent_task and has_ssh) or is_lite_agent else model_name
-        yield f"data: {json.dumps({'type': 'meta', 'variant': variant, 'model': active_model_name, 'enhanced': enhanced, 'agent_mode': (is_agent_task and has_ssh) or is_lite_agent})}\n\n"
-
-        if is_lite_agent:
+        yield f"data: {json.dumps({'type': 'meta', 'variant': variant, 'model': active_model_name, 'enhanced': enhanced, 'agent_mode': (is_agent_task and has_ssh) or is_lite_agent})}
+\n"\n\n"        if is_lite_agent:
             # ═══ LITE AGENT MODE: File/Image generation without SSH ═══
-            yield f"data: {json.dumps({'type': 'agent_mode', 'text': 'Генерирую файл...'})}\n\n"
+            yield f"data: {json.dumps({'type': 'agent_mode', 'text': 'Генерирую файл...'})}
+\n"
 
             agent = AgentLoop(
                 model=agent_model,
                 api_key=OPENROUTER_API_KEY,
                 api_url=OPENROUTER_BASE_URL,
-                ssh_credentials={}  # No SSH needed for file generation
+                ssh_credentials={}  # No SSH needed
             )
 
             with _agents_lock:
@@ -931,7 +923,8 @@ def send_message(chat_id):
 
         elif is_agent_task and has_ssh:
             # ═══ AGENT MODE: Real execution with SSH/Browser/Files ═══
-            yield f"data: {json.dumps({'type': 'agent_mode', 'text': 'Запускаю автономный агент...'})}\n\n"
+            yield f"data: {json.dumps({'type': 'agent_mode', 'text': 'Запускаю автономный агент...'})}
+\n"n\n"
 
             if enhanced:
                 # Multi-agent pipeline
@@ -1100,7 +1093,7 @@ def send_message(chat_id):
             "tokens_out": tokens_out,
             "cost": total_cost,
             "enhanced": enhanced,
-            "agent_mode": (is_agent_task and has_ssh) or is_lite_agent
+            "agent_mode": is_agent_task and has_ssh
         }
         chat2["messages"].append(assistant_msg)
         chat2["total_cost"] = round(chat2.get("total_cost", 0) + total_cost, 4)
@@ -1141,7 +1134,7 @@ def send_message(chat_id):
             "cost": total_cost,
             "variant": variant,
             "enhanced": enhanced,
-            "agent_mode": (is_agent_task and has_ssh) or is_lite_agent,
+            "agent_mode": is_agent_task and has_ssh,
             "timestamp": now,
             "user_id": request.user_id,
             "success": "❌" not in full_response[:100]
