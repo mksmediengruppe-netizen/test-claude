@@ -491,9 +491,10 @@ def test_ssh_connection():
 def list_chats():
     """List all chats for current user."""
     db = db_read()
+    is_admin = request.user.get("role") == "admin"
     user_chats = []
     for chat_id, chat in db["chats"].items():
-        if chat.get("user_id") == request.user_id:
+        if is_admin or chat.get("user_id") == request.user_id:
             user_chats.append({
                 "id": chat_id,
                 "title": chat.get("title", "Новый чат"),
@@ -502,7 +503,8 @@ def list_chats():
                 "message_count": len(chat.get("messages", [])),
                 "total_cost": chat.get("total_cost", 0.0),
                 "model_used": chat.get("model_used", ""),
-                "variant": chat.get("variant", "premium")
+                "variant": chat.get("variant", "premium"),
+                "owner": db["users"].get(chat.get("user_id",""), {}).get("email", "") if is_admin and chat.get("user_id") != request.user_id else ""
             })
 
     user_chats.sort(key=lambda x: x.get("updated_at", ""), reverse=True)

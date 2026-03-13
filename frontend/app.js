@@ -363,9 +363,10 @@ function renderChatList() {
         const time = formatTime(c.updated_at);
         const variantEmoji = c.variant === 'original' ? '🔴' : c.variant === 'budget' ? '🔵' : '🟢';
 
+        const ownerBadge = c.owner ? `<span style="font-size:10px;color:#f59e0b;margin-left:4px;">👤${c.owner}</span>` : '';
         return `<div class="chat-item ${isActive ? 'active' : ''}" onclick="openChat('${c.id}')" data-chat-id="${c.id}">
             <div class="chat-item-header">
-                <div class="chat-item-title" id="chatTitle_${c.id}">${escapeHtml(c.title)}</div>
+                <div class="chat-item-title" id="chatTitle_${c.id}">${escapeHtml(c.title)}${ownerBadge}</div>
                 <button class="chat-item-menu-btn" onclick="event.stopPropagation(); toggleChatMenu('${c.id}')" title="Действия">⋮</button>
             </div>
             <div class="chat-item-meta">
@@ -579,7 +580,7 @@ function renderChatMessages() {
         return;
     }
 
-    container.innerHTML = state.currentChat.messages.map(msg => {
+    container.innerHTML = state.currentChat.messages.map((msg, i) => {
         if (msg.role === 'user') {
             return `<div class="message user">
                 <div class="message-avatar">${(state.user?.name || 'U')[0]}</div>
