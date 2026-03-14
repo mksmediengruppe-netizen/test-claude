@@ -1572,6 +1572,9 @@ function autoResizeInput(textarea) {
   textarea.style.overflowY = textarea.scrollHeight > maxH ? 'auto' : 'hidden';
 }
 
+// Alias used in HTML oninput="autoResize(this)"
+function autoResize(el) { autoResizeInput(el); }
+
 function useSuggestion(text) {
   const input = document.getElementById('chatInput');
   input.value = text;
