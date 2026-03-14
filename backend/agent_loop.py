@@ -2041,6 +2041,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 
         messages.append({"role": "user", "content": full_message})
 
+        # Store user_message for fallback response
+        self.user_message = user_message
+
         # Agent loop with LangGraph state tracking
         iteration = 0
         full_response_text = ""
@@ -2231,9 +2234,37 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 
         if self._stop_requested:
             yield self._sse({"type": "stopped", "text": "Агент остановлен пользователем"})
+            return
+
+        # Принудительный финальный ответ если агент достиг MAX_ITERATIONS без task_complete
+        if not full_response_text.strip():
+            yield self._sse({"type": "content", "text": "⚠️ Агент достиг лимита итераций. Запрашиваю финальный ответ..."})
+            try:
+                # Собрать контекст выполненных действий для финального ответа
+                tool_results_summary = []
+                for m in messages:
+                    if m.get("role") == "tool":
+                        try:
+                            r = json.loads(m["content"])
+                            if isinstance(r, dict) and r.get("success"):
+                                tool_results_summary.append(m["content"][:300])
+                        except Exception:
+                            pass
+                context_summary = "\n".join(tool_results_summary[-5:]) if tool_results_summary else "Результаты действий недоступны"
+                final_messages = [
+                    {"role": "system", "content": "Ты автономный AI-агент. На основе выполненных действий дай полный итоговый ответ пользователю. Отвечай на языке пользователя."},
+                    {"role": "user", "content": f"Задача: {self.user_message if hasattr(self, 'user_message') else 'задача выполнена'}\n\nРезультаты действий:\n{context_summary}\n\nНапиши итоговый ответ с результатами выполненных действий."}
+                ]
+                for event in self._call_ai_stream(final_messages, tools=None):
+                    if event["type"] == "text_delta":
+                        yield self._sse({"type": "content", "text": event["text"]})
+                    elif event["type"] == "text_complete":
+                        break
+            except Exception as e:
+                yield self._sse({"type": "content", "text": f"\n\n⚠️ Агент достиг лимита итераций ({self.MAX_ITERATIONS}). Пожалуйста, уточните задачу или повторите запрос."})
 
 
-# ══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
 # ██ MULTI-AGENT LOOP ██
 # ══════════════════════════════════════════════════════════════════
 
