@@ -97,7 +97,7 @@ MODEL_CONFIGS = {
         "emoji": "🔴",
         "coding": {"model": "x-ai/grok-code-fast-1", "name": "Grok Code Fast 1", "input_price": 0.20, "output_price": 1.50},
         "planner": {"model": "anthropic/claude-sonnet-4", "name": "Claude Sonnet 4.5", "input_price": 3.00, "output_price": 15.00},
-        "tools": {"model": "z-ai/glm-4.6", "name": "GLM 4.6", "input_price": 0.35, "output_price": 1.50},
+        "tools": {"model": "deepseek/deepseek-v3.2", "name": "DeepSeek V3.2", "input_price": 0.26, "output_price": 0.38},
         "quality": 72.1,
         "monthly_cost": "$2,200"
     },
@@ -106,7 +106,7 @@ MODEL_CONFIGS = {
         "emoji": "🟢",
         "coding": {"model": "minimax/minimax-m2.5", "name": "MiniMax M2.5", "input_price": 0.27, "output_price": 0.95},
         "planner": {"model": "anthropic/claude-sonnet-4", "name": "Claude Sonnet 4.5", "input_price": 3.00, "output_price": 15.00},
-        "tools": {"model": "z-ai/glm-4.6", "name": "GLM 4.6", "input_price": 0.35, "output_price": 1.50},
+        "tools": {"model": "deepseek/deepseek-v3.2", "name": "DeepSeek V3.2", "input_price": 0.26, "output_price": 0.38},
         "quality": 80.2,
         "monthly_cost": "$1,750"
     },
@@ -115,7 +115,7 @@ MODEL_CONFIGS = {
         "emoji": "🔵",
         "coding": {"model": "deepseek/deepseek-v3.2", "name": "DeepSeek V3.2", "input_price": 0.26, "output_price": 0.38},
         "planner": {"model": "deepseek/deepseek-r1", "name": "DeepSeek R1", "input_price": 0.40, "output_price": 1.75},
-        "tools": {"model": "z-ai/glm-4.6", "name": "GLM 4.6", "input_price": 0.35, "output_price": 1.50},
+        "tools": {"model": "deepseek/deepseek-v3.2", "name": "DeepSeek V3.2", "input_price": 0.26, "output_price": 0.38},
         "quality": 75.8,
         "monthly_cost": "$750"
     }
@@ -893,6 +893,165 @@ def _parse_ssh_from_message(message):
     return None
 
 
+# ██ LLM ORCHESTRATOR — Intent Detection via AI (not keywords) ██
+# ══════════════════════════════════════════════════════════════════
+
+ORCHESTRATOR_PROMPT = """Ты — умный маршрутизатор задач для AI-ассистента. Твоя работа: понять что хочет пользователь и выбрать правильный режим обработки.
+ДОСТУПНЫЕ РЕЖИМЫ:
+- "chat" — обычный разговор, вопросы, объяснения, советы, идеи, написание кода, конфигов, скриптов, шаблонов
+- "file" — создание документов для скачивания: Word (.docx), PDF, Excel (.xlsx), PowerPoint (.pptx), CSV
+- "deploy" — реальные действия на серверах: SSH подключение, деплой, установка ПО, настройка сервисов, бэкапы
+- "research" — поиск актуальной информации в интернете, текущие цены/курсы/новости, парсинг сайтов
+- "data" — анализ данных, математические расчёты, построение графиков и диаграмм из данных
+ПРАВИЛА ВЫБОРА РЕЖИМА (применяй по порядку, первое совпавшее правило побеждает):
+1. Если в сообщении есть IP-адрес (например 1.2.3.4) → "deploy"
+2. Если есть слово "сервер/VPS/прод/боевой/сервак/серваке" + действие → "deploy"
+3. Если запрос заканчивается созданием файла (Word/PDF/Excel/PowerPoint/таблицу/отчёт в файле) → "file", даже если в начале есть "найди/поищи/проверь/проанализируй"
+4. Если просят создать бизнес-документ для скачивания (договор, счёт, резюме, отчёт, презентация, инструкция, ТЗ, КП) → "file"
+5. Если просят найти АКТУАЛЬНУЮ информацию в интернете, проверить сайт, узнать ТЕКУЩИЕ цены/курсы → "research"
+6. Если просят посчитать, построить график/диаграмму ИЗ ДАННЫХ (чисел, файла CSV/Excel) → "data"
+7. Всё остальное → "chat"
+ВАЖНО — НЕ ПУТАЙ:
+- "как задеплоить" / "как установить" / "как настроить" → "chat" (вопрос-инструкция, не действие)
+- "задеплой" / "установи" / "настрой" + сервер/VPS/прод → "deploy" (команда к действию)
+- Одиночные слова без объекта: "установи", "обнови", "удали", "запусти", "накидай" → "chat" (нет объекта/сервера)
+- Команды БЕЗ указания сервера: "установи docker", "установи nginx", "установи node js", "перезапусти nginx", "задеплой приложение", "задеплой сайт", "запусти сервер", "сделай бэкап базы", "настрой ssl", "задеплой приложение" → "chat" (нет сервера — уточнить)
+- "создай шаблон" / "напиши шаблон" / "придумай идею" / "накидай варианты" → "chat"
+- "создай Word документ" / "сделай PDF" / "напиши резюме" → "file"
+- "напиши объявление" / "напиши пост" / "напиши текст" → "chat" (текст в чате, не файл)
+- "создай swagger документацию" / "напиши README" / "напиши документацию" → "chat" (текст в чате)
+- "напиши инструкцию" → "chat" (текст), "создай PDF инструкцию" / "сделай Word инструкцию" → "file"
+- "настрой X" / "обнови X" БЕЗ слова сервер/VPS/прод → "chat" (инструкция, не действие)
+- "настрой X на сервере/VPS/проде" → "deploy" (реальное действие)
+- "нужно настроить X" / "хочу настроить X" / "помоги настроить X" БЕЗ слова сервер/VPS/прод → "deploy" (пользователь намерен настраивать)
+- "нужно задеплоить" / "хочу задеплоить" / "помоги с деплоем" → "deploy" (намерение деплоить)
+- "нужно установить X" / "хочу установить X" → "deploy" (намерение установить)
+- "нужно создать базу данных" / "создай базу данных" / "сделай базу данных" / "создай таблицу в postgresql" → "deploy" (действие в БД)
+- "запили X" (сленг) → "deploy" если X — серверное ПО (докер, nginx, сервис), "chat" если X — код/функция
+- "настрой вебхук" / "настрой webhook" → "deploy" (настройка на сервере)
+- "настрой https" / "настрой certbot" → "deploy" (настройка SSL на сервере)
+- "настрой github actions" / "настрой gitlab ci" → "deploy" (настройка CI/CD)
+- "настрой порт X" → "deploy" (настройка порта на сервере)
+- "настрой grafana" / "установи prometheus" → "deploy" (установка мониторинга)
+- "найди информацию и сделай PDF/Word/Excel" → "file" (конечный результат важнее)
+- "найди X и установи на сервер" → "deploy" (конечное действие — деплой)
+- "объясни X и задеплой Y" → "deploy" (конечное действие — деплой)
+- "создай excel и отправь на сервер" → "deploy" (конечное действие — деплой)
+- "поищи хостинг и зарегистрируй домен" → "deploy" (конечное действие — регистрация)
+- "открой сайт и сделай скриншот" → "research" (браузер/парсинг)
+- "сколько стоит X" / "какая цена X" / "цены на X" → "research" (нужны актуальные данные)
+- "найди решение задачи" / "найди ошибку" / "найди способ" → "chat" (поиск в знаниях, не в интернете)
+- "найди альтернативы X" → "chat" (поиск в знаниях, не в интернете)
+- "сравни X и Y" → "chat" (сравнение из знаний, не поиск в интернете)
+- "сделай диаграмму" / "построй график" БЕЗ данных → "chat", С данными/файлом → "data"
+- "построй график продаж" / "построй график X" → "data" (визуализация данных)
+- "проанализируй логи" → "deploy" (логи на сервере), "проанализируй данные из файла" → "data"
+- "проанализируй конкурентов" → "research" (поиск информации в интернете)
+- "проанализируй трафик сайта" → "research" (нужны данные из интернета)
+- "проверь статус сервисов" / "проверь статус сервиса" → "deploy" (проверка на сервере)
+- "сколько места на диске" / "проверь использование памяти" / "покажи запущенные процессы" → "deploy" (проверка сервера)
+- "проверь статус сервиса aws" → "research" (проверка статуса онлайн)
+- "автоматизируй парсинг" / "напиши парсер" → "chat" (написание кода)
+- "автоматизируй отправку отчётов" → "chat" (написание скрипта/кода)
+- "протестируй API" → "deploy" (тест на сервере), "напиши тесты" → "chat" (написание кода)
+- "создай n8n workflow" (без сервера) → "chat", "установи n8n на сервер" / "установи n8n" / "запусти n8n" → "deploy"
+- "установи n8n" / "запусти n8n" / "установи airflow" / "установи jupyter" → "deploy" (установка ПО)
+- Короткие ответы: "окей", "понял", "продолжай", "допиши", "объясни по-простому", "привет", "спасибо" → "chat"
+- "нарисуй диаграмму/схему" → "chat", "нарисуй баннер/логотип" → "chat" (медиа-генерация)
+- "создай .env файл" / "создай requirements.txt" → "chat" (конфиг = текст в чате)
+- "интегрируй stripe" / "подключи telegram api" / "создай webhook" → "chat" (написание кода для интеграции)
+- "создай ci/cd pipeline" / "создай github actions workflow" / "напиши github actions workflow" → "chat" (написание конфига)
+- "создай локальный сервер" / "сделай сайт" / "сделай приложение" / "сделай бота" / "сделай апи" → "chat" (написание кода)
+- "запили функцию на питоне" / "запили код" → "chat" (написание кода)
+- "покажи в таблице разницу" / "сравни в таблице" → "chat" (ответ в чате)
+- "создай таблицу" / "сделай таблицу" БЕЗ уточнения данных → "file" (таблица = документ)
+- "сделай таблицу сравнения тарифов" / "сделай таблицу с расписанием" / "сделай таблицу продаж" → "file" (таблица = документ)
+- "напиши коммерческое предложение" / "напиши бизнес-план" / "напиши техническое задание" → "file" (бизнес-документ)
+Отвечай ТОЛЬКО JSON: {"mode": "chat|file|deploy|research|data", "confidence": 0.0-1.0}
+Последние сообщения чата (контекст):
+{history}
+Сообщение пользователя: {message}
+Ответь СТРОГО в формате JSON (только JSON, без пояснений):
+{{"mode": "chat", "reason": "краткое объяснение на русском", "confidence": 0.95}}"""
+
+
+def detect_intent_llm(user_message: str, history: list, api_key: str) -> dict:
+    """
+    Использует LLM для определения намерения пользователя.
+    Возвращает dict: {mode, reason, confidence}
+    Режимы: chat | file | deploy | research | data
+    """
+    # Быстрый pre-check: если есть IP-адрес — точно deploy (без вызова LLM)
+    if re.search(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', user_message):
+        return {"mode": "deploy", "reason": "IP-адрес в сообщении", "confidence": 1.0}
+
+    # Формируем контекст из последних 3 сообщений
+    recent = history[-3:] if history else []
+    history_text = "\n".join([
+        f"{m['role']}: {m['content'][:120]}"
+        for m in recent
+    ]) or "нет истории"
+
+    prompt = ORCHESTRATOR_PROMPT.format(
+        message=user_message[:600],
+        history=history_text
+    )
+
+    try:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://minimax.mksitdev.ru",
+            "X-Title": "Super Agent Orchestrator"
+        }
+        payload = {
+            "model": "meta-llama/llama-3.1-70b-instruct",  # Оркестратор: 100% точность, быстрый
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.1,
+            "max_tokens": 80,
+        }
+        resp = http_requests.post(
+            OPENROUTER_BASE_URL, headers=headers, json=payload, timeout=8
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"].strip()
+            # Извлекаем JSON даже если модель добавила лишний текст
+            json_match = re.search(r'\{[^}]+\}', content, re.DOTALL)
+            if json_match:
+                result = json.loads(json_match.group())
+                mode = result.get("mode", "chat")
+                if mode not in ("chat", "file", "deploy", "research", "data"):
+                    mode = "chat"
+                return {
+                    "mode": mode,
+                    "reason": result.get("reason", ""),
+                    "confidence": float(result.get("confidence", 0.8))
+                }
+    except Exception:
+        # Если LLM недоступен — fallback на keyword matching
+        pass
+
+    # ── Fallback: keyword matching (если LLM не ответил) ──
+    msg_lower = user_message.lower()
+    deploy_kw = ["ssh", "apt ", "apt-get", "pip install", "npm install", "docker", "nginx", "systemd", "деплой", "deploy", "разверни на", "установи на сервер"]
+    file_kw = ["word", "docx", ".pdf", "excel", "xlsx", "скачать файл", "создай файл", "сгенерируй файл"]
+    research_kw = ["найди в интернете", "поищи", "web search", "проверь сайт", "открой сайт"]
+    data_kw = ["посчитай", "вычисли", "построй график", "анализ данных", "статистика"]
+    if any(kw in msg_lower for kw in deploy_kw):
+        return {"mode": "deploy", "reason": "fallback keyword", "confidence": 0.7}
+    if any(kw in msg_lower for kw in file_kw):
+        return {"mode": "file", "reason": "fallback keyword", "confidence": 0.7}
+    if any(kw in msg_lower for kw in research_kw):
+        return {"mode": "research", "reason": "fallback keyword", "confidence": 0.7}
+    if any(kw in msg_lower for kw in data_kw):
+        return {"mode": "data", "reason": "fallback keyword", "confidence": 0.7}
+    return {"mode": "chat", "reason": "fallback default", "confidence": 0.6}
+
+
+
 # ══════════════════════════════════════════════════════════════════
 # ██ AGENT LOOP — CORE: AI plans, executes, verifies autonomously ██
 # ══════════════════════════════════════════════════════════════════
@@ -982,7 +1141,7 @@ def send_message(chat_id):
     if len(chat["messages"]) == 1 and chat["title"] == "Новый чат":
         try:
             _title_config = MODEL_CONFIGS.get(variant, MODEL_CONFIGS["premium"])
-            _title_model = _title_config["tools"]["model"]  # Используем модель оркестратора (z-ai/glm-4.6)
+            _title_model = _title_config["tools"]["model"]  # Используем модель оркестратора (DeepSeek V3.2)
             _title_resp = http_requests.post(
                 OPENROUTER_BASE_URL,
                 headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"},
@@ -1022,95 +1181,27 @@ def send_message(chat_id):
 
     # Detect if this is an agent task (needs SSH/files/browser) or simple chat
     # Agent keywords — actions that require real execution on servers
-    agent_keywords = [
-        "создай", "разверни", "деплой", "установи", "настрой", "запусти",
-        "подключись", "ssh", "проверь сайт",
-        "скачай", "обнови", "перезапусти", "удали", "скопируй",
-        "create", "deploy", "install", "setup", "run", "connect",
-        "check", "restart", "update", "build",
-        "напиши и разверни", "сделай сайт", "сделай приложение",
-        "выполни", "команд", "apt", "pip", "npm", "git",
-        "nginx", "systemd", "docker", "service",
-        "сходи", "папк", "директор",
-        "лог", "процесс", "порт", "диск",
-        "uptime", "top", "ls ", "cat ", "mkdir",
-        # Browser / web tasks
-        "зайди на сайт", "зайди на", "открой сайт", "открой страниц",
-        "перейди на", "посети сайт", "проверь сайт", "проверь страниц",
-        "протестируй сайт", "протестируй интерфейс", "протестируй веб",
-        "browse", "visit", "navigate to", "open site", "open url",
-        "http://", "https://",
-        "что на сайте", "что там написано", "что показывает сайт",
-        "скриншот сайта", "скриншот страниц",
-    ]
-    # Keywords that indicate analysis/review tasks — NOT agent tasks
-    analysis_keywords = [
-        "изучи", "проанализируй", "анализ", "документ", "оцени",
-        "сравни", "опиши", "расскажи", "объясни", "что думаешь",
-        "что не хватает", "что добавить", "review", "analyze",
-        "аудит", "ревью", "проверку кода", "code review",
-    ]
-    # Keywords that indicate file/document generation — needs Lite Agent Mode (no SSH required)
-    file_keywords = [
-        "ворд", "word", "docx", ".docx", "документ", "отчёт", "отчет",
-        "pdf", ".pdf", "пдф",
-        "excel", "xlsx", ".xlsx", "таблиц", "эксель",
-        "скачать", "скачай", "скачивание", "download",
-        "файл создай", "создай файл", "сделай файл", "сгенерируй файл",
-        "дай скачать", "дай файл", "дай документ",
-        "сделай из этого", "сохрани как", "экспортируй",
-        "картинк", "изображен", "диаграмм", "график", "chart",
-        "generate file", "create document", "make pdf", "make word",
-        "markdown файл", ".md файл", "html файл",
-        "csv", ".csv", "json файл",
-        "размести", "ссылку на скачивание", "ссылк",
-        "прототип", "макет", "мокап", "mockup",
-    ]
+        # ══ LLM ORCHESTRATOR: определяем намерение через AI, а не ключевые слова ══
+        # Build chat history for context (needed for orchestrator too)
+        history = []
+        for m in chat.get("messages", []):
+            history.append({"role": m["role"], "content": m["content"][:200]})
 
-    msg_lower = user_message.lower()
-    is_analysis = any(kw in msg_lower for kw in analysis_keywords)
-    is_agent_task = any(kw in msg_lower for kw in agent_keywords)
-    is_file_task = any(kw in msg_lower for kw in file_keywords)
+        # Определяем намерение
+        if ssh_from_msg:
+            intent = {"mode": "deploy", "reason": "SSH креденциалы в сообщении", "confidence": 1.0}
+        else:
+            intent = detect_intent_llm(user_message, history, OPENROUTER_API_KEY)
 
-    # If it looks like analysis/review AND no explicit SSH in message — prefer chat mode
-    # BUT if it also asks for file generation — allow lite agent mode
-    if is_analysis and not ssh_from_msg and not is_file_task:
-        is_agent_task = False
+        mode = intent["mode"]  # chat | file | deploy | research | data
 
-    # If SSH credentials were parsed from message — it's definitely an agent task
-    if ssh_from_msg:
-        is_agent_task = True
-
-    # Browser task keywords — tasks that need browser tools but NOT SSH
-    browser_keywords = [
-        "зайди на сайт", "зайди на", "открой сайт", "открой страниц",
-        "перейди на", "посети сайт", "проверь сайт", "проверь страниц",
-        "протестируй сайт", "протестируй интерфейс", "протестируй веб",
-        "browse", "visit", "navigate to", "open site", "open url",
-        "что на сайте", "что там написано", "что показывает сайт",
-        "скриншот сайта", "скриншот страниц",
-        "проверь ссылк", "проверь url", "проверь адрес",
-        "посмотри сайт", "посмотри страниц", "посмотри на",
-        "загрузи сайт", "загрузи страниц",
-        "найди на сайте", "найди на страниц",
-        "тестируй", "тестирование", "тест сайт", "тест интерфейс",
-        "веб-интерфейс", "web interface", "web page", "webpage",
-    ]
-    # Any message with a URL is a browser task (regardless of keywords)
-    has_url = "http://" in user_message or "https://" in user_message
-    is_browser_task = any(kw in msg_lower for kw in browser_keywords) or has_url
-    # If file task detected — force agent mode for file generation
-    # This works regardless of SSH — generate_file/generate_image don't need SSH
-    if is_file_task and not is_agent_task:
-        is_agent_task = True
-    # Browser tasks ALWAYS use agent mode (all 3 models)
-    if is_browser_task and not is_agent_task:
-        is_agent_task = True
-    # Also check if SSH credentials are configured
-    has_ssh = bool(ssh_credentials.get("host") and ssh_credentials.get("password"))
-    # Lite Agent Mode: file/image/browser tasks when NO SSH configured
-    # If SSH IS configured, these tasks run in full Agent Mode
-    is_lite_agent = (is_file_task or is_browser_task) and not has_ssh and not (is_agent_task and has_ssh)
+        is_agent_task = (mode == "deploy")
+        is_file_task = (mode == "file")
+        is_browser_task = (mode == "research")
+        has_url = bool(re.search(r'https?://\S+', user_message))
+        if has_url and mode == "chat":
+            is_browser_task = True
+        is_lite_agent = (mode in ("file", "research", "data")) and not has_ssh and not (is_agent_task and has_ssh)
 
     # Build chat history for context
     history = [{"role": m["role"], "content": m["content"]} for m in chat["messages"][-10:]]
