@@ -297,19 +297,8 @@ async function initApp() {
   // Render chat list
   renderChatList();
 
-  // If no chats, create one
-  if (Object.keys(STATE.chats).length === 0) {
-    newChat();
-  } else {
-    // Load last chat
-    const lastChatId = localStorage.getItem('sa_last_chat');
-    if (lastChatId && STATE.chats[lastChatId]) {
-      loadChat(lastChatId);
-    } else {
-      const firstId = Object.keys(STATE.chats)[0];
-      loadChat(firstId);
-    }
-  }
+  // Show welcome screen (new chat) on load — do not auto-load last chat
+  newChat();
 
   // Init analytics charts
   initAnalyticsCharts();
