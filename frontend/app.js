@@ -46,6 +46,9 @@ const STATE = {
   commandPaletteOpen: false,
 };
 
+// Pending files to upload with next message
+let _pendingFiles = [];
+
 // ── Config ─────────────────────────────────────────────────────
 const CONFIG = {
   BACKEND_URL: window.location.origin.includes('localhost') || window.location.origin.includes('8080') ? 'https://minimax.mksitdev.ru' : window.location.origin,
@@ -263,26 +266,28 @@ async function initApp() {
       if (resp.ok) {
         const data = await resp.json();
         const backendChats = data.chats || [];
-        // Merge backend chats into STATE.chats
+        // Always refresh chats from backend (admin sees all chats)
+        // Keep only local-only chats (no backendId), replace backend chats
+        const localOnlyChats = {};
+        Object.entries(STATE.chats).forEach(([id, chat]) => {
+          if (!chat.backendId) localOnlyChats[id] = chat;
+        });
+        STATE.chats = { ...localOnlyChats };
         backendChats.forEach(bc => {
           const localId = 'bc_' + bc.id;
-          if (!STATE.chats[localId]) {
-            STATE.chats[localId] = {
-              id: localId,
-              backendId: bc.id,
-              title: bc.title || 'Новый чат',
-              messages: (bc.messages || []).map(m => ({
-                role: m.role,
-                content: m.content,
-                cost: m.cost || 0,
-                tokens: m.tokens || 0,
-              })),
-              createdAt: bc.created_at || new Date().toISOString(),
-              totalCost: bc.total_cost || 0,
-              totalTokens: bc.total_tokens || 0,
-              model: STATE.selectedModel,
-            };
-          }
+          STATE.chats[localId] = {
+            id: localId,
+            backendId: bc.id,
+            title: bc.title || 'Новый чат',
+            messages: [],  // messages loaded on demand
+            createdAt: bc.created_at || new Date().toISOString(),
+            updatedAt: bc.updated_at || bc.created_at || new Date().toISOString(),
+            totalCost: bc.total_cost || 0,
+            totalTokens: bc.total_tokens || 0,
+            messageCount: bc.message_count || 0,
+            model: bc.model_used || STATE.selectedModel,
+            owner: bc.owner || '',  // email of owner for admin view
+          };
         });
         saveChats();
       }
@@ -427,7 +432,14 @@ function loadChat(chatId) {
   localStorage.setItem('sa_last_chat', chatId);
 
   // Update header
-  document.getElementById('chatTitle').textContent = chat.title;
+  const isAdminView = STATE.currentUser?.role === 'admin' && chat.owner;
+  const titleEl = document.getElementById('chatTitle');
+  titleEl.textContent = chat.title;
+  if (isAdminView) {
+    titleEl.title = `Владелец: ${chat.owner}`;
+  } else {
+    titleEl.title = '';
+  }
   document.getElementById('chatCostDisplay').textContent = '$' + STATE.chatCost.toFixed(4);
   document.getElementById('totalTokensVal').textContent = STATE.totalTokens.toLocaleString();
 
@@ -435,7 +447,46 @@ function loadChat(chatId) {
   const messagesEl = document.getElementById('messages');
   const welcomeState = document.getElementById('welcomeScreen');
 
-  if (chat.messages.length === 0) {
+  // If chat has backendId but no messages loaded yet, fetch from backend
+  const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+  if (chat.backendId && chat.messages.length === 0 && (chat.messageCount || 0) > 0 && token) {
+    welcomeState.style.display = 'flex';
+    messagesEl.querySelectorAll('.message').forEach(m => m.remove());
+    // Show loading indicator
+    const loadingEl = document.createElement('div');
+    loadingEl.id = 'chat_loading_indicator';
+    loadingEl.style.cssText = 'text-align:center;padding:20px;color:var(--text-secondary);font-size:13px;';
+    loadingEl.textContent = 'Загрузка сообщений...';
+    messagesEl.appendChild(loadingEl);
+    fetch(`${CONFIG.BACKEND_URL}/api/chats/${chat.backendId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    }).then(r => r.json()).then(data => {
+      const loadEl = document.getElementById('chat_loading_indicator');
+      if (loadEl) loadEl.remove();
+      if (data.chat && data.chat.messages) {
+        chat.messages = data.chat.messages.map(m => ({
+          role: m.role,
+          content: m.content,
+          cost: m.cost || 0,
+          tokens: m.tokens || 0,
+        }));
+        chat.totalCost = data.chat.total_cost || chat.totalCost;
+        chat.totalTokens = data.chat.total_tokens || chat.totalTokens;
+        saveChats();
+        if (STATE.currentChatId === chatId) {
+          if (chat.messages.length > 0) {
+            welcomeState.style.display = 'none';
+            messagesEl.querySelectorAll('.message').forEach(m => m.remove());
+            chat.messages.forEach(msg => renderMessage(msg.role, msg.content, msg.cost, msg.tokens, false));
+            setTimeout(scrollToBottom, 100);
+          }
+        }
+      }
+    }).catch(() => {
+      const loadEl = document.getElementById('chat_loading_indicator');
+      if (loadEl) loadEl.remove();
+    });
+  } else if (chat.messages.length === 0) {
     welcomeState.style.display = 'flex';
     messagesEl.querySelectorAll('.message').forEach(m => m.remove());
   } else {
@@ -528,7 +579,12 @@ function closeChatContextMenu() {
 
 function renderChatList() {
   const list = document.getElementById('chatList');
-  const chats = Object.values(STATE.chats).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const isAdmin = STATE.currentUser?.role === 'admin';
+  const chats = Object.values(STATE.chats).sort((a, b) => {
+    const ta = a.updatedAt || a.createdAt || '';
+    const tb = b.updatedAt || b.createdAt || '';
+    return new Date(tb) - new Date(ta);
+  });
 
   if (chats.length === 0) {
     list.innerHTML = '<div style="padding:8px 10px;font-size:12px;color:var(--text-tertiary);">Нет чатов</div>';
@@ -537,14 +593,17 @@ function renderChatList() {
 
   list.innerHTML = chats.map(chat => {
     const costRub = chat.totalCost > 0 ? (chat.totalCost * CONFIG.USD_TO_RUB).toFixed(2) : null;
+    const ownerBadge = isAdmin && chat.owner ? `<span style="font-size:10px;color:var(--accent-orange);margin-left:4px;" title="Владелец: ${escapeHtml(chat.owner)}">👤 ${escapeHtml(chat.owner.split('@')[0])}</span>` : '';
+    const msgCount = chat.messageCount > 0 ? `<span style="font-size:10px;color:var(--text-tertiary);">${chat.messageCount} сообщ.</span>` : '';
     return `
     <div class="chat-item ${chat.id === STATE.currentChatId ? 'active' : ''}" 
          data-chat-id="${chat.id}" onclick="loadChat('${chat.id}')">
       <div class="chat-item-info">
-        <div class="chat-item-title">${escapeHtml(chat.title)}</div>
+        <div class="chat-item-title">${escapeHtml(chat.title)}${ownerBadge}</div>
         <div class="chat-item-meta">
-          <span>${formatDate(chat.createdAt)}</span>
+          <span>${formatDate(chat.updatedAt || chat.createdAt)}</span>
           ${costRub ? `<span class="chat-item-cost">₽${costRub}</span>` : ''}
+          ${msgCount}
         </div>
       </div>
       <button class="chat-item-menu" onclick="openChatContextMenu('${chat.id}', event)" title="Действия">
@@ -810,8 +869,32 @@ async function sendMessage() {
   STATE.taskSteps = [];
 
   showGenerationUI(true);
-  addAuditEntry('chat', `Запрос: ${text.substring(0, 60)}...`);
-
+   addAuditEntry('chat', `Запрос: ${text.substring(0, 60)}...`);
+  // Upload pending files to backend
+  const filesToUpload = _pendingFiles.filter(f => f !== null);
+  _pendingFiles = [];
+  const attachedFilesEl = document.getElementById('attachedFile');
+  if (attachedFilesEl) { attachedFilesEl.innerHTML = ''; attachedFilesEl.classList.add('hidden'); }
+  if (filesToUpload.length > 0) {
+    const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+    if (token) {
+      try {
+        const formData = new FormData();
+        filesToUpload.forEach(f => formData.append('file', f));
+        const uploadResp = await fetch(`${CONFIG.BACKEND_URL}/api/upload`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+          body: formData,
+        });
+        if (uploadResp.ok) {
+          const uploadData = await uploadResp.json();
+          if (uploadData.content) {
+            chat.pendingFile = uploadData.content;
+          }
+        }
+      } catch(e) { console.error('File upload error:', e); }
+    }
+  }
   try {
     await callAPI(text, chat);
   } catch(e) {
@@ -1490,23 +1573,30 @@ function handleFileSelect(event) {
 }
 
 function attachFile(file) {
+  _pendingFiles.push(file);
   const attachedFiles = document.getElementById('attachedFile');
   attachedFiles.classList.remove('hidden');
-
+  const fileIdx = _pendingFiles.length - 1;
   const chip = document.createElement('div');
   chip.className = 'attached-file-chip';
+  chip.dataset.fileIdx = fileIdx;
   chip.innerHTML = `
     <span>${getFileIcon(file.name)} ${file.name}</span>
     <span style="color:var(--text-tertiary);font-size:11px;">${formatFileSize(file.size)}</span>
-    <button onclick="this.parentElement.remove(); checkAttachedFiles()">×</button>
+    <button onclick="removeFileChip(this, ${fileIdx})">×</button>
   `;
   attachedFiles.appendChild(chip);
 }
-
+function removeFileChip(btn, idx) {
+  _pendingFiles[idx] = null;  // mark as removed
+  btn.parentElement.remove();
+  checkAttachedFiles();
+}
 function checkAttachedFiles() {
   const attachedFiles = document.getElementById('attachedFile');
   if (attachedFiles.children.length === 0) {
     attachedFiles.classList.add('hidden');
+    _pendingFiles = [];
   }
 }
 
@@ -1620,6 +1710,34 @@ function shareChat() {
   if (!chat) return;
   const text = chat.messages.map(m => `${m.role === 'user' ? 'Вы' : 'Агент'}: ${m.content}`).join('\n\n');
   navigator.clipboard.writeText(text).then(() => showToast('Чат скопирован в буфер', 'success'));
+}
+async function downloadChat() {
+  const chat = STATE.chats[STATE.currentChatId];
+  if (!chat) return;
+  const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+  // Try backend export (ZIP with all files)
+  if (chat.backendId && token) {
+    try {
+      const resp = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${chat.backendId}/export`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `chat_${chat.title.replace(/[^a-zA-Z0-9Ѐ-ӿ]/g, '_').substring(0, 30)}.zip`;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
+        showToast('Чат скачан', 'success');
+        return;
+      }
+    } catch(e) {}
+  }
+  // Fallback: download as text
+  const text = `# ${chat.title}\n\n` + chat.messages.map(m => `## ${m.role === 'user' ? 'Вы' : 'Агент'}\n${m.content}`).join('\n\n---\n\n');
+  downloadFile(`chat_${chat.title.substring(0, 30)}.md`, text, 'text/markdown');
+  showToast('Чат скачан как Markdown', 'success');
 }
 
 function copyMessage(msgId) {
@@ -2682,6 +2800,7 @@ function closeCmdPalette(e) { closeCommandPalette(e); }
 function removeAttachment() {
   const attachedFile = document.getElementById('attachedFile');
   if (attachedFile) { attachedFile.innerHTML = ''; attachedFile.classList.add('hidden'); }
+  _pendingFiles = [];
 }
 function switchACPane(pane, btn) {
   document.querySelectorAll('.ac-pane').forEach(p => p.classList.remove('active'));

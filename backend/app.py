@@ -591,8 +591,10 @@ def rename_chat(chat_id):
     data = request.get_json() or {}
     db = db_read()
     chat = db["chats"].get(chat_id)
-    if not chat or chat.get("user_id") != request.user_id:
+    if not chat:
         return jsonify({"error": "Chat not found"}), 404
+    if chat.get("user_id") != request.user_id and request.user.get("role") != "admin":
+        return jsonify({"error": "Access denied"}), 403
 
     chat["title"] = data.get("title", chat["title"])
     chat["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -911,8 +913,10 @@ def send_message(chat_id):
 
     db = db_read()
     chat = db["chats"].get(chat_id)
-    if not chat or chat.get("user_id") != request.user_id:
+    if not chat:
         return jsonify({"error": "Chat not found"}), 404
+    if chat.get("user_id") != request.user_id and request.user.get("role") != "admin":
+        return jsonify({"error": "Access denied"}), 403
 
     # ── Spending limit check ──
     _user_data = db["users"].get(request.user_id, {})
