@@ -611,6 +611,35 @@ function renderMessage(role, content, cost = 0, tokens = 0, animate = true) {
   return msgId;
 }
 
+// Detect if a code block looks like a file artifact (JSON, CSV, XML, YAML, etc.)
+function getArtifactInfo(lang, code) {
+  const fileTypes = {
+    json: { ext: 'json', mime: 'application/json', icon: '📄', label: 'JSON' },
+    csv: { ext: 'csv', mime: 'text/csv', icon: '📊', label: 'CSV' },
+    xml: { ext: 'xml', mime: 'text/xml', icon: '📄', label: 'XML' },
+    yaml: { ext: 'yaml', mime: 'text/yaml', icon: '📄', label: 'YAML' },
+    yml: { ext: 'yml', mime: 'text/yaml', icon: '📄', label: 'YAML' },
+    html: { ext: 'html', mime: 'text/html', icon: '🌐', label: 'HTML' },
+    sql: { ext: 'sql', mime: 'text/plain', icon: '🗄️', label: 'SQL' },
+    sh: { ext: 'sh', mime: 'text/plain', icon: '💻', label: 'Shell' },
+    bash: { ext: 'sh', mime: 'text/plain', icon: '💻', label: 'Bash' },
+    python: { ext: 'py', mime: 'text/plain', icon: '🐍', label: 'Python' },
+    py: { ext: 'py', mime: 'text/plain', icon: '🐍', label: 'Python' },
+    javascript: { ext: 'js', mime: 'text/javascript', icon: '📜', label: 'JavaScript' },
+    js: { ext: 'js', mime: 'text/javascript', icon: '📜', label: 'JavaScript' },
+    typescript: { ext: 'ts', mime: 'text/plain', icon: '📜', label: 'TypeScript' },
+    ts: { ext: 'ts', mime: 'text/plain', icon: '📜', label: 'TypeScript' },
+    dockerfile: { ext: 'dockerfile', mime: 'text/plain', icon: '🐳', label: 'Dockerfile' },
+    nginx: { ext: 'conf', mime: 'text/plain', icon: '⚙️', label: 'Nginx Config' },
+  };
+  const l = (lang || '').toLowerCase();
+  // Large code blocks (>50 lines) or known file types get download button
+  const lineCount = code.split('\n').length;
+  if (fileTypes[l]) return fileTypes[l];
+  if (lineCount > 50) return { ext: 'txt', mime: 'text/plain', icon: '📄', label: 'Text' };
+  return null;
+}
+
 function renderMarkdown(text) {
   if (typeof marked === 'undefined') return escapeHtml(text).replace(/\n/g, '<br>');
   try {
@@ -618,7 +647,11 @@ function renderMarkdown(text) {
       breaks: true,
       gfm: true,
       highlight: function(code, lang) {
-        return `<div class="code-block-header"><span class="code-lang">${lang || 'code'}</span><div class="code-actions"><button class="code-action-btn" onclick="copyCode(this)">Копировать</button></div></div><code>${escapeHtml(code)}</code>`;
+        const artifact = getArtifactInfo(lang, code);
+        const downloadBtn = artifact
+          ? `<button class="code-action-btn artifact-download" onclick="downloadCodeBlock(this,'${artifact.ext}','${artifact.mime}')" title="Скачать файл">${artifact.icon} Скачать .${artifact.ext}</button>`
+          : '';
+        return `<div class="code-block-header"><span class="code-lang">${lang || 'code'}</span><div class="code-actions">${downloadBtn}<button class="code-action-btn" onclick="copyCode(this)">Копировать</button></div></div><code>${escapeHtml(code)}</code>`;
       }
     });
     let html = marked.parse(text);
@@ -628,6 +661,16 @@ function renderMarkdown(text) {
   } catch(e) {
     return escapeHtml(text).replace(/\n/g, '<br>');
   }
+}
+
+function downloadCodeBlock(btn, ext, mime) {
+  const pre = btn.closest('.code-block-header')?.nextElementSibling || btn.closest('pre')?.querySelector('code');
+  const codeEl = btn.closest('pre')?.querySelector('code');
+  if (!codeEl) return;
+  const content = codeEl.textContent || codeEl.innerText;
+  const filename = `artifact_${Date.now()}.${ext}`;
+  downloadFile(filename, content, mime);
+  showToast(`Файл ${filename} скачан`, 'success');
 }
 
 // ── Streaming Message ──────────────────────────────────────────
@@ -1617,22 +1660,169 @@ function regenerateMessage() {
 // ── Settings Modal ─────────────────────────────────────────────
 function openSettings() {
   document.getElementById('settingsModal').classList.remove('hidden');
-  updateUsageStats();
+  switchSettingsPanel('general', document.querySelector('#settingsModal .modal-nav-item'));
 }
 
 function closeSettings() {
   document.getElementById('settingsModal').classList.add('hidden');
 }
 
+// Alias used by index.html
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add('hidden');
+}
+
+function closeModalOutside(e, id) {
+  if (e.target === document.getElementById(id)) closeModal(id);
+}
+
 function closeSettingsOnOverlay(e) {
   if (e.target === document.getElementById('settingsModal')) closeSettings();
 }
 
-function switchSettingsTab(tab, btn) {
-  document.querySelectorAll('.settings-tab-content').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.settings-nav-item').forEach(el => el.classList.remove('active'));
-  document.getElementById('settings-' + tab)?.classList.add('active');
-  btn.classList.add('active');
+// Alias for old name
+function switchSettingsTab(tab, btn) { switchSettingsPanel(tab, btn); }
+
+function switchSettingsPanel(panel, btn) {
+  // Update active nav item
+  document.querySelectorAll('#settingsModal .modal-nav-item').forEach(el => el.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  else {
+    const target = document.querySelector(`#settingsModal .modal-nav-item[data-panel="${panel}"]`);
+    if (target) target.classList.add('active');
+  }
+  // Update title
+  const titles = { general: 'Настройки', account: 'Аккаунт', models: 'Модели', personalization: 'Персонализация', api: 'API ключи', security: 'Безопасность', usage: 'Использование' };
+  const titleEl = document.getElementById('settingsPanelTitle');
+  if (titleEl) titleEl.textContent = titles[panel] || 'Настройки';
+  // Render panel content
+  const body = document.getElementById('settingsPanelBody');
+  if (body) body.innerHTML = renderSettingsPanel(panel);
+}
+
+function renderSettingsPanel(panel) {
+  const s = STATE.settings;
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  if (panel === 'general') {
+    return `
+      <div class="settings-section">
+        <div class="settings-section-title">Внешний вид</div>
+        <div class="settings-row">
+          <span class="settings-label">Тема</span>
+          <div class="theme-options">
+            <button class="appearance-option ${s.theme==='dark'?'active':''}" onclick="setTheme('dark',this)">🌙 Тёмная</button>
+            <button class="appearance-option ${s.theme==='light'?'active':''}" onclick="setTheme('light',this)">☀️ Светлая</button>
+            <button class="appearance-option ${s.theme==='system'?'active':''}" onclick="setTheme('system',this)">💻 Система</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">Размер шрифта</span>
+          <input type="range" min="12" max="18" value="${s.fontSize||14}" oninput="setFontSize(this.value)" style="width:120px">
+          <span style="font-size:12px;color:var(--text3);margin-left:8px">${s.fontSize||14}px</span>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Поведение</div>
+        <div class="settings-row">
+          <span class="settings-label">Автопрокрутка</span>
+          <button class="toggle-btn ${s.autoScroll!==false?'active':''}" onclick="toggleSetting('autoScroll',this)"><span class="toggle-thumb"></span></button>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">Звуковые уведомления</span>
+          <button class="toggle-btn ${s.soundNotifications?'active':''}" onclick="toggleSetting('soundNotifications',this)"><span class="toggle-thumb"></span></button>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">Сохранять историю</span>
+          <button class="toggle-btn ${s.saveHistory!==false?'active':''}" onclick="toggleSetting('saveHistory',this)"><span class="toggle-thumb"></span></button>
+        </div>
+      </div>`;
+  }
+  if (panel === 'account') {
+    const u = STATE.currentUser || {};
+    return `
+      <div class="settings-section">
+        <div class="settings-section-title">Профиль</div>
+        <div class="settings-row"><span class="settings-label">Имя</span><span style="color:var(--text1)">${u.name || '—'}</span></div>
+        <div class="settings-row"><span class="settings-label">Email</span><span style="color:var(--text1)">${u.email || '—'}</span></div>
+        <div class="settings-row"><span class="settings-label">Роль</span><span style="color:var(--text1)">${u.role || 'user'}</span></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Баланс</div>
+        <div class="settings-row"><span class="settings-label">Потрачено</span><span id="balanceSpent" style="color:var(--accent-green)">загрузка...</span></div>
+        <div class="settings-row"><span class="settings-label">Лимит</span><span id="balanceLimit" style="color:var(--text2)">загрузка...</span></div>
+        <div class="settings-row"><span class="settings-label">Остаток</span><span id="balanceLeft" style="color:var(--accent-blue)">загрузка...</span></div>
+      </div>`;
+  }
+  if (panel === 'models') {
+    return Object.entries(CONFIG.MODELS).map(([id, m]) => `
+      <div class="settings-card ${STATE.selectedModel===id?'selected':''}" onclick="selectDefaultModel('${id}',this)" style="cursor:pointer;padding:12px;border:1px solid var(--border1);border-radius:8px;margin-bottom:8px">
+        <div style="font-weight:600;color:var(--text1)">${m.dot} ${m.name}</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:4px">${m.desc}</div>
+        <div style="font-size:11px;color:var(--accent-green);margin-top:4px">${m.price}</div>
+      </div>`).join('');
+  }
+  if (panel === 'personalization') {
+    return `
+      <div class="settings-section">
+        <div class="settings-section-title">Персонализация</div>
+        <div class="form-group">
+          <label class="form-label">Ваше имя</label>
+          <input type="text" class="form-input" id="profileName" value="${s.profileName||''}" placeholder="Как вас называть?">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Контекст для агента</label>
+          <textarea class="form-input" id="agentContext" rows="4" placeholder="Расскажите агенту о вашей работе, предпочтениях...">${s.agentContext||''}</textarea>
+        </div>
+        <button class="btn-primary" onclick="savePersonalization()">Сохранить</button>
+      </div>`;
+  }
+  if (panel === 'api') {
+    return `
+      <div class="settings-section">
+        <div class="settings-section-title">API ключи</div>
+        <div class="form-group">
+          <label class="form-label">OpenRouter API Key</label>
+          <input type="password" class="form-input" id="openrouterKey" value="${s.openrouterKey||''}" placeholder="sk-or-...">
+          <button class="btn-secondary" style="margin-top:8px" onclick="saveApiKey()">Сохранить</button>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Backend URL</label>
+          <input type="text" class="form-input" id="backendUrl" value="${CONFIG.BACKEND_URL||''}" placeholder="https://minimax.mksitdev.ru">
+          <button class="btn-secondary" style="margin-top:8px" onclick="saveBackendUrl()">Сохранить</button>
+        </div>
+      </div>`;
+  }
+  if (panel === 'security') {
+    return `
+      <div class="settings-section">
+        <div class="settings-section-title">Безопасность</div>
+        <div class="settings-row">
+          <span class="settings-label">Двухфакторная аутентификация</span>
+          <button class="toggle-btn ${s.twoFactor?'active':''}" onclick="toggleSetting('twoFactor',this)"><span class="toggle-thumb"></span></button>
+        </div>
+        <div class="settings-row" style="margin-top:16px">
+          <span class="settings-label" style="color:var(--accent-red)">Удалить все данные</span>
+          <button class="btn-danger" onclick="clearAllData()">Удалить</button>
+        </div>
+      </div>`;
+  }
+  if (panel === 'usage') {
+    const totalCost = STATE.analytics.reduce((s,a) => s+(a.cost||0), 0);
+    const totalTokens = STATE.analytics.reduce((s,a) => s+(a.inputTokens||0)+(a.outputTokens||0), 0);
+    const totalRub = (totalCost * 105).toFixed(2);
+    return `
+      <div class="settings-section">
+        <div class="settings-section-title">Статистика использования</div>
+        <div class="settings-row"><span class="settings-label">Всего запросов</span><span style="color:var(--text1)">${STATE.analytics.length}</span></div>
+        <div class="settings-row"><span class="settings-label">Всего токенов</span><span style="color:var(--text1)">${totalTokens.toLocaleString()}</span></div>
+        <div class="settings-row"><span class="settings-label">Потрачено</span><span style="color:var(--accent-green)">$${totalCost.toFixed(4)} (₽${totalRub})</span></div>
+        <div class="settings-row" style="margin-top:16px">
+          <button class="btn-secondary" onclick="exportAnalytics()">Экспорт CSV</button>
+        </div>
+      </div>`;
+  }
+  return '<div style="padding:24px;color:var(--text3)">Раздел в разработке</div>';
 }
 
 function toggleSetting(key, el) {
