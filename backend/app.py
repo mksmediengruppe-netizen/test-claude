@@ -978,14 +978,16 @@ def send_message(chat_id):
     chat["messages"].append(user_msg)
     chat["updated_at"] = now
 
-    # Auto-title from first message — generate smart title via LLM
+    # Auto-title from first message — generate smart title via LLM (using orchestrator model)
     if len(chat["messages"]) == 1 and chat["title"] == "Новый чат":
         try:
+            _title_config = MODEL_CONFIGS.get(variant, MODEL_CONFIGS["premium"])
+            _title_model = _title_config["tools"]["model"]  # Используем модель оркестратора (z-ai/glm-4.6)
             _title_resp = http_requests.post(
                 OPENROUTER_BASE_URL,
                 headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"},
                 json={
-                    "model": "openai/gpt-4.1-nano",
+                    "model": _title_model,
                     "max_tokens": 20,
                     "temperature": 0.3,
                     "messages": [
