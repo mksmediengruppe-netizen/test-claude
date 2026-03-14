@@ -1565,7 +1565,11 @@ function injectMessage() {
 
 function autoResizeInput(textarea) {
   textarea.style.height = 'auto';
-  textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+  const maxH = 160;
+  const newH = Math.min(textarea.scrollHeight, maxH);
+  textarea.style.height = newH + 'px';
+  // Show scrollbar only when content exceeds max height
+  textarea.style.overflowY = textarea.scrollHeight > maxH ? 'auto' : 'hidden';
 }
 
 function useSuggestion(text) {

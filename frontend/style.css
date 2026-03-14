@@ -880,8 +880,10 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 .chat-input {
   flex: 1; background: none; border: none; outline: none;
   color: var(--text); font-size: 14px; line-height: 1.6;
-  resize: none; min-height: 32px; max-height: 200px;
+  resize: none; min-height: 32px; max-height: 160px;
   padding: 4px 0; overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
 }
 .chat-input::placeholder { color: var(--text4); }
 
