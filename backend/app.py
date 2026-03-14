@@ -38,6 +38,8 @@ from file_generator import (
     cleanup_old_files, GENERATED_DIR
 )
 from file_reader import read_file as read_any_file, FileReadResult, get_supported_formats
+from model_router import select_model, classify_complexity, log_cost, get_cost_analytics, get_fallback_model
+import logging
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
@@ -1194,6 +1196,15 @@ def send_message(chat_id):
 
     mode = intent["mode"]  # chat | file | deploy | research | data
 
+    # ══ MODEL ROUTER: автовыбор модели по сложности запроса ══
+    has_ssh = bool(ssh_credentials.get("host") and ssh_credentials.get("password"))
+    routed = select_model(user_message, variant=variant, history=history)
+    routed_model_id = routed["model_id"]
+    routed_model_name = routed["model_name"]
+    routed_tier = routed["tier"]
+    routed_complexity = routed["complexity"]
+    logging.info(f"[ModelRouter] query='{user_message[:60]}' complexity={routed_complexity} tier={routed_tier} model={routed_model_id}")
+
     is_agent_task = (mode == "deploy")
     is_file_task = (mode == "file")
     is_browser_task = (mode == "research")
@@ -1208,9 +1219,12 @@ def send_message(chat_id):
     def generate():
         full_response = ""
 
-        # Send metadata — show agent model name when in agent mode
-        active_model_name = agent_model_name if (is_agent_task and has_ssh) or is_lite_agent else model_name
-        yield f"data: {json.dumps({'type': 'meta', 'variant': variant, 'model': active_model_name, 'enhanced': enhanced, 'agent_mode': (is_agent_task and has_ssh) or is_lite_agent})}\n\n"
+        # Send metadata — show routed model info
+        if (is_agent_task and has_ssh) or is_lite_agent:
+            active_model_name = agent_model_name
+        else:
+            active_model_name = routed_model_name
+        yield f"data: {json.dumps({'type': 'meta', 'variant': variant, 'model': active_model_name, 'enhanced': enhanced, 'agent_mode': (is_agent_task and has_ssh) or is_lite_agent, 'tier': routed_tier, 'complexity': routed_complexity})}\n\n"
 
         if is_lite_agent:
             # ═══ LITE AGENT MODE: File/Image generation without SSH ═══
@@ -1294,13 +1308,16 @@ def send_message(chat_id):
                     _active_agents.pop(chat_id, None)
 
         else:
-            # ═══ CHAT MODE: Simple text response (no SSH needed) ═══
-            # Use chat model for simple questions, coding model for code tasks
+            # ═══ CHAT MODE: Smart model routing by complexity ═══
             code_keywords = ["код", "code", "функци", "class", "function", "html", "css", "js", "python", "api"]
             is_code = any(kw in user_message.lower() for kw in code_keywords)
 
             if is_code:
-                active_model = model
+                # For code tasks: use routed model (complexity-based) or coding model from variant
+                if routed_complexity >= 4:
+                    active_model = config["coding"]["model"]  # Complex code → coding model (MiniMax/Grok)
+                else:
+                    active_model = routed_model_id  # Simple code → routed (cheaper) model
                 system_prompt = """Ты — Senior Full-Stack Developer. Ты пишешь production-ready код.
 Правила:
 - Чистый, читаемый код с комментариями
@@ -1313,8 +1330,12 @@ def send_message(chat_id):
 скажи ему настроить SSH подключение в настройках (иконка ⚙️), указав хост, логин и пароль сервера.
 После этого ты сможешь автоматически выполнять команды на сервере."""
             else:
-                active_model = CHAT_MODELS.get(chat_model, CHAT_MODELS["qwen3"])["model"]
-                system_prompt = """Ты — полезный AI-ассистент Super Agent v4.0. Отвечай на русском языке.
+                # For non-code: use routed model for simple, user's chat model for complex
+                if routed_complexity <= 2:
+                    active_model = routed_model_id  # Simple → fast/cheap model
+                else:
+                    active_model = CHAT_MODELS.get(chat_model, CHAT_MODELS["qwen3"])["model"]
+                system_prompt = """Ты — полезный AI-ассистент Super Agent v6.0. Отвечай на русском языке.
 Ты умеешь:
 - Писать код и создавать приложения
 - Подключаться к серверам по SSH и выполнять команды
@@ -1396,10 +1417,28 @@ def send_message(chat_id):
                 yield f"data: {json.dumps({'type': 'error', 'text': error_msg})}\n\n"
                 full_response = error_msg
 
-        # Calculate cost
-        cost_in = (tokens_in / 1_000_000) * config["coding"]["input_price"]
-        cost_out = (tokens_out / 1_000_000) * config["coding"]["output_price"]
+        # Calculate cost using routed model prices
+        _active_input_price = routed.get("input_price", config["coding"]["input_price"])
+        _active_output_price = routed.get("output_price", config["coding"]["output_price"])
+        cost_in = (tokens_in / 1_000_000) * _active_input_price
+        cost_out = (tokens_out / 1_000_000) * _active_output_price
         total_cost = round(cost_in + cost_out, 4)
+
+        # Log cost via model_router for analytics
+        try:
+            log_cost(
+                user_id=request.user_id,
+                model_id=routed_model_id,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cost_usd=total_cost,
+                tier=routed_tier,
+                complexity=routed_complexity,
+                tool_name=mode,
+                success="\u274c" not in full_response[:100]
+            )
+        except Exception:
+            pass  # Non-critical
 
         # Save assistant message
         db2 = db_read()
@@ -1479,8 +1518,8 @@ def send_message(chat_id):
 
         db_write(db2)
 
-        # Send completion event
-        yield f"data: {json.dumps({'type': 'done', 'tokens_in': tokens_in, 'tokens_out': tokens_out, 'cost': total_cost, 'model': model_name})}\n\n"
+        # Send completion event with routing info
+        yield f"data: {json.dumps({'type': 'done', 'tokens_in': tokens_in, 'tokens_out': tokens_out, 'cost': total_cost, 'model': routed_model_name, 'tier': routed_tier, 'complexity': routed_complexity})}\n\n"
 
     return Response(
         stream_with_context(generate()),
@@ -2802,6 +2841,36 @@ def export_audit_logs():
         from security import get_audit_log
         entries = get_audit_log(limit=10000)
         return jsonify({"success": True, "logs": entries, "exported_at": datetime.now(timezone.utc).isoformat()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# ██ MODEL ROUTER ANALYTICS API ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/analytics/costs", methods=["GET"])
+@require_auth
+def get_model_cost_analytics():
+    """Get model routing cost analytics."""
+    try:
+        days = int(request.args.get("days", 30))
+        user_id = request.args.get("user_id", request.user_id)
+        analytics = get_cost_analytics(user_id=user_id, days=days)
+        return jsonify({"success": True, "analytics": analytics})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/model-router/classify", methods=["POST"])
+@require_auth
+def classify_query_complexity():
+    """Classify query complexity for debugging/testing."""
+    try:
+        data = request.get_json() or {}
+        query = data.get("query", "")
+        result = select_model(query)
+        return jsonify({"success": True, "result": result})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
