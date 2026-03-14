@@ -67,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDragDrop();
   setupKeyboardShortcuts();
   setupScrollDetection();
+  renderModelDropdown();
   // Welcome suggestion hover
   document.querySelectorAll('.welcome-suggestion').forEach(btn => {
     btn.addEventListener('mouseenter', () => btn.style.borderColor = 'var(--accent-primary)');
@@ -1295,7 +1296,7 @@ function toggleModelDropdown() {
 }
 
 function closeModelDropdownOutside(e) {
-  const wrap = document.querySelector('.model-dropdown-wrap');
+  const wrap = document.querySelector('.model-sel-wrap');
   if (wrap && !wrap.contains(e.target)) {
     document.getElementById('modelMenu').classList.add('hidden');
     document.getElementById('modelSelBtn').setAttribute('aria-expanded', 'false');
@@ -1755,12 +1756,15 @@ function renderSettingsPanel(panel) {
       </div>`;
   }
   if (panel === 'models') {
-    return Object.entries(CONFIG.MODELS).map(([id, m]) => `
-      <div class="settings-card ${STATE.selectedModel===id?'selected':''}" onclick="selectDefaultModel('${id}',this)" style="cursor:pointer;padding:12px;border:1px solid var(--border1);border-radius:8px;margin-bottom:8px">
-        <div style="font-weight:600;color:var(--text1)">${m.dot} ${m.name}</div>
-        <div style="font-size:12px;color:var(--text3);margin-top:4px">${m.desc}</div>
-        <div style="font-size:11px;color:var(--accent-green);margin-top:4px">${m.price}</div>
-      </div>`).join('');
+    return Object.entries(CONFIG.MODELS).map(([id, m]) => {
+      const costPer1k = (((m.inputCost||0) + (m.outputCost||0)) / 2 * 1000 * CONFIG.USD_TO_RUB).toFixed(2);
+      return `
+      <div class="settings-card" onclick="selectModel('${id}','${m.name}','')" style="cursor:pointer;padding:12px;border:1px solid ${STATE.selectedModel===id?'var(--accent)':'var(--border)'};border-radius:8px;margin-bottom:8px;background:${STATE.selectedModel===id?'var(--bg-active)':'transparent'}">
+        <div style="font-weight:600;color:var(--text)">${m.name}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:4px">${m.desc}</div>
+        <div style="font-size:11px;color:var(--accent-green);margin-top:4px">≈₽${costPer1k}/1K токенов</div>
+      </div>`;
+    }).join('');
   }
   if (panel === 'personalization') {
     return `
@@ -2667,4 +2671,50 @@ function downloadFile(filename, content, mimeType) {
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// ── Function Aliases (HTML onclick compatibility) ──────────────
+function toggleModelMenu() { toggleModelDropdown(); }
+function stopGeneration() { cancelTask(); }
+function addScheduledTask() { saveScheduledTask(); }
+function openCmdPalette() { openCommandPalette(); }
+function closeCmdPalette(e) { closeCommandPalette(e); }
+function removeAttachment() {
+  const attachedFile = document.getElementById('attachedFile');
+  if (attachedFile) { attachedFile.innerHTML = ''; attachedFile.classList.add('hidden'); }
+}
+function switchACPane(pane, btn) {
+  document.querySelectorAll('.ac-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.ac-tab').forEach(b => b.classList.remove('active'));
+  const paneEl = document.getElementById('ac-' + pane);
+  if (paneEl) paneEl.classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+function toggleACFullscreen() {
+  const panel = document.getElementById('agentComputer');
+  if (panel) panel.classList.toggle('ac-fullscreen');
+}
+function renameChat(chatId) {
+  renameChatInline(chatId, { stopPropagation: () => {} });
+}
+function showChatContextMenu(chatId, event) {
+  event.stopPropagation();
+  document.getElementById('chatCtxMenu')?.remove();
+  const menu = document.createElement('div');
+  menu.id = 'chatCtxMenu';
+  menu.className = 'chat-ctx-menu';
+  menu.innerHTML = `
+    <button onclick="renameChatInline('${chatId}',{stopPropagation:()=>{}}); document.getElementById('chatCtxMenu')?.remove()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      Переименовать
+    </button>
+    <button class="danger" onclick="deleteChat('${chatId}'); document.getElementById('chatCtxMenu')?.remove()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+      Удалить
+    </button>
+  `;
+  const rect = event.target.getBoundingClientRect();
+  menu.style.cssText = `position:fixed;top:${rect.bottom+4}px;left:${Math.min(rect.left,window.innerWidth-180)}px;z-index:9999;`;
+  document.body.appendChild(menu);
+  setTimeout(() => document.addEventListener('click', () => menu.remove(), { once: true }), 10);
 }
