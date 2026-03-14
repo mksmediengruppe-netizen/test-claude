@@ -550,8 +550,8 @@ class AgentLoop:
     - Circuit breaker for cascading failure protection
     """
 
-    MAX_ITERATIONS = 25
-    MAX_TOOL_OUTPUT = 10000
+    MAX_ITERATIONS = 50
+    MAX_TOOL_OUTPUT = 20000
     MAX_HEAL_ATTEMPTS = 3
 
     def __init__(self, model, api_key, api_url="https://openrouter.ai/api/v1/chat/completions",
@@ -2030,10 +2030,16 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 
         full_message = user_message
         if file_content:
-            max_file_len = 30000
+            max_file_len = 100000
             if len(file_content) > max_file_len:
                 file_content = file_content[:max_file_len] + f"\n... [обрезано, всего {len(file_content)} символов]"
             full_message = f"{file_content}\n\n---\n\nЗадача:\n{user_message}"
+            # Динамически увеличиваем MAX_ITERATIONS для больших файлов
+            file_size = len(file_content)
+            if file_size > 50000:
+                self.MAX_ITERATIONS = 80  # Очень большой файл (50к+ символов)
+            elif file_size > 20000:
+                self.MAX_ITERATIONS = 60  # Большой файл (20к-50к символов)
 
         if self.ssh_credentials.get("host"):
             creds_hint = f"\n\n[Доступные серверы: {self.ssh_credentials['host']} (user: {self.ssh_credentials.get('username', 'root')})]"
