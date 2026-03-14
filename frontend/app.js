@@ -1043,14 +1043,44 @@ async function callAPI(userMessage, chat) {
             } else if (type === 'content') {
               fullText += parsed.text || '';
               updateStreamingMessage(streamMsgId, fullText);
-            } else if (type === 'tool_call') {
+            } else if (type === 'tool_call' || type === 'tool_start') {
               const tool = parsed.tool || '';
-              addTaskStep('🔧', `Инструмент: ${tool}`);
-              addThinkingStep(streamMsgId, '🔧', `Инструмент: ${tool}`);
+              const args = parsed.args || {};
+              const isHeal = parsed.is_heal ? ' 🔄 (авто-исправление)' : '';
+              const argsStr = Object.keys(args).length > 0 ? ' ' + JSON.stringify(args).substring(0, 60) : '';
+              addTaskStep('🔧', `Инструмент: ${tool}${argsStr}${isHeal}`);
+              addThinkingStep(streamMsgId, '🔧', `Инструмент: ${tool}${isHeal}`);
+              addTerminalLine(`$ ${tool}${argsStr}`, 'cmd');
             } else if (type === 'tool_result') {
-              const out = (parsed.output || '').substring(0, 80);
-              addTaskStep('✅', `Результат: ${out}`);
-              addThinkingStep(streamMsgId, '✅', `Результат: ${out}`);
+              // Backend sends 'preview' field, not 'output'
+              const out = (parsed.preview || parsed.output || parsed.summary || '').substring(0, 200);
+              const elapsed = parsed.elapsed ? ` (${parsed.elapsed}с)` : '';
+              const ok = parsed.success !== false ? '✅' : '❌';
+              addTaskStep(ok, `${parsed.tool || 'Результат'}${elapsed}: ${out || 'выполнено'}`);
+              addThinkingStep(streamMsgId, ok, `${parsed.tool || 'Результат'}${elapsed}`);
+              if (out) addTerminalLine(out, parsed.success !== false ? 'output' : 'error');
+            } else if (type === 'self_heal') {
+              const msg = `Авто-исправление #${parsed.attempt}: ${parsed.fix_description || ''}`;
+              addTaskStep('🔄', msg);
+              addThinkingStep(streamMsgId, '🔄', msg);
+              addTerminalLine(msg, 'warn');
+            } else if (type === 'task_complete') {
+              const summary = parsed.summary || 'Задача выполнена';
+              addTaskStep('🏁', summary);
+              addThinkingStep(streamMsgId, '🏁', summary);
+              addTerminalLine('✓ ' + summary, 'success');
+            } else if (type === 'stopped') {
+              addTaskStep('⏹', parsed.text || 'Остановлено');
+              addThinkingStep(streamMsgId, '⏹', parsed.text || 'Остановлено');
+            } else if (type === 'agent_start') {
+              addTaskStep('🚀', parsed.text || 'Агент запущен');
+              addThinkingStep(streamMsgId, '🚀', parsed.text || 'Агент запущен');
+            } else if (type === 'agent_iteration') {
+              const iter = parsed.iteration || '';
+              addTaskStep('🔁', `Итерация ${iter}`);
+              addTerminalLine(`--- Итерация ${iter} ---`, 'prompt');
+            } else if (type === 'agent_complete') {
+              addTaskStep('✅', parsed.text || 'Агент завершил работу');
             } else if (type === 'file') {
               addTaskStep('📄', `Файл: ${parsed.filename || ''}`);
               addThinkingStep(streamMsgId, '📄', `Файл: ${parsed.filename || ''}`);
@@ -1059,9 +1089,10 @@ async function callAPI(userMessage, chat) {
                 updateStreamingMessage(streamMsgId, fullText);
               }
             } else if (type === 'error') {
-              const errMsg = parsed.message || 'Ошибка';
+              const errMsg = parsed.text || parsed.message || parsed.error || 'Ошибка';
               addTaskStep('❌', errMsg);
               addThinkingStep(streamMsgId, '❌', errMsg);
+              addTerminalLine(errMsg, 'error');
             } else if (type === 'done') {
               inputTokens = parsed.tokens_in || 0;
               outputTokens = parsed.tokens_out || 0;
