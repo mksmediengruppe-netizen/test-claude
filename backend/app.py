@@ -978,9 +978,34 @@ def send_message(chat_id):
     chat["messages"].append(user_msg)
     chat["updated_at"] = now
 
-    # Auto-title from first message
+    # Auto-title from first message — generate smart title via LLM
     if len(chat["messages"]) == 1 and chat["title"] == "Новый чат":
-        chat["title"] = user_message[:50] + ("..." if len(user_message) > 50 else "")
+        try:
+            _title_resp = http_requests.post(
+                OPENROUTER_BASE_URL,
+                headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": "openai/gpt-4.1-nano",
+                    "max_tokens": 20,
+                    "temperature": 0.3,
+                    "messages": [
+                        {"role": "system", "content": "Generate a short chat title (3-6 words, no quotes, no punctuation at end) that captures the essence of the user's request. Reply with ONLY the title, nothing else."},
+                        {"role": "user", "content": user_message[:500]}
+                    ]
+                },
+                timeout=5
+            )
+            _title_data = _title_resp.json()
+            _generated_title = _title_data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            # Clean up: remove quotes, trim
+            _generated_title = _generated_title.strip('"\' ').rstrip('.')
+            if _generated_title and 3 <= len(_generated_title) <= 80:
+                chat["title"] = _generated_title
+            else:
+                raise ValueError("bad title")
+        except Exception:
+            # Fallback: first 50 chars
+            chat["title"] = user_message[:50] + ("..." if len(user_message) > 50 else "")
 
     db["chats"][chat_id] = chat
     db_write(db)
