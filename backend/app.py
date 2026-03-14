@@ -340,14 +340,21 @@ def logout():
 def get_me():
     """Get current user info."""
     user = request.user
+    total_spent = user.get("total_spent", 0.0)
+    monthly_limit = user.get("monthly_limit", 999999)
+    limit_pct = round(total_spent / max(monthly_limit, 0.01) * 100, 1) if monthly_limit < 999999 else 0
     return jsonify({
         "id": request.user_id,
         "email": user["email"],
         "name": user["name"],
         "role": user.get("role", "user"),
         "settings": user.get("settings", {}),
-        "total_spent": user.get("total_spent", 0.0),
-        "monthly_limit": user.get("monthly_limit", 999999)
+        "total_spent": total_spent,
+        "total_spent_rub": round(total_spent * 105, 2),
+        "monthly_limit": monthly_limit,
+        "monthly_limit_rub": round(monthly_limit * 105, 2) if monthly_limit < 999999 else None,
+        "limit_used_percent": limit_pct,
+        "balance_remaining": round((monthly_limit - total_spent) * 105, 2) if monthly_limit < 999999 else None
     })
 
 
@@ -906,6 +913,22 @@ def send_message(chat_id):
     chat = db["chats"].get(chat_id)
     if not chat or chat.get("user_id") != request.user_id:
         return jsonify({"error": "Chat not found"}), 404
+
+    # ── Spending limit check ──
+    _user_data = db["users"].get(request.user_id, {})
+    _monthly_limit = _user_data.get("monthly_limit", 999999)
+    _total_spent = _user_data.get("total_spent", 0.0)
+    if _monthly_limit and _monthly_limit < 999999 and _total_spent >= _monthly_limit:
+        _spent_rub = round(_total_spent * 105, 2)
+        _limit_rub = round(_monthly_limit * 105, 2)
+        return jsonify({
+            "error": "spending_limit_exceeded",
+            "message": f"Лимит исчерпан. Вы потратили ₽{_spent_rub} из ₽{_limit_rub} доступных. Обратитесь к администратору для пополнения баланса.",
+            "spent": _total_spent,
+            "limit": _monthly_limit,
+            "spent_rub": _spent_rub,
+            "limit_rub": _limit_rub
+        }), 402
 
     data = request.get_json() or {}
     user_message = data.get("message", "").strip()

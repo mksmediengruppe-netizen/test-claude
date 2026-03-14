@@ -207,30 +207,34 @@
               <div class="model-sel-wrap">
                 <button class="model-sel-btn" id="modelSelBtn" onclick="toggleModelMenu()" aria-expanded="false">
                   <span class="model-dot green" id="modelDot"></span>
-                  <span id="modelSelLabel">Auto</span>
+                  <span id="modelSelLabel">🔴 Оригинал</span>
                   <svg class="model-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
                 <div class="model-menu hidden" id="modelMenu">
-                  <div class="model-menu-item active" data-model="auto" onclick="selectModel('auto','Auto','green')">
-                    <span class="model-dot green"></span>
-                    <div class="model-info"><span class="model-name">Auto</span><span class="model-desc">Умный выбор модели</span></div>
+                  <div class="model-menu-header">Выберите модель</div>
+                  <div class="model-dropdown-item active" data-model-id="original" onclick="selectModel('original','🔴 Оригинал','red')">
+                    <span class="model-dropdown-dot red"></span>
+                    <div class="model-dropdown-info">
+                      <div class="model-dropdown-name">🔴 Оригинал</div>
+                      <div class="model-dropdown-desc">Grok Code Fast 1 · Быстрый и точный</div>
+                    </div>
+                    <div class="model-dropdown-price">₽0.02/1K</div>
                   </div>
-                  <div class="model-menu-item" data-model="gpt-4o" onclick="selectModel('gpt-4o','GPT-4o','blue')">
-                    <span class="model-dot blue"></span>
-                    <div class="model-info"><span class="model-name">GPT-4o</span><span class="model-desc">OpenAI · Быстрый</span></div>
-                    <span class="model-badge">⚡</span>
+                  <div class="model-dropdown-item" data-model-id="premium" onclick="selectModel('premium','🟢 Премиум','green')">
+                    <span class="model-dropdown-dot green"></span>
+                    <div class="model-dropdown-info">
+                      <div class="model-dropdown-name">🟢 Премиум</div>
+                      <div class="model-dropdown-desc">MiniMax M2.5 · Мощный</div>
+                    </div>
+                    <div class="model-dropdown-price">₽0.08/1K</div>
                   </div>
-                  <div class="model-menu-item" data-model="claude-3-5-sonnet" onclick="selectModel('claude-3-5-sonnet','Claude 3.5','purple')">
-                    <span class="model-dot purple"></span>
-                    <div class="model-info"><span class="model-name">Claude 3.5</span><span class="model-desc">Anthropic · Точный</span></div>
-                  </div>
-                  <div class="model-menu-item" data-model="gemini-2.0-flash" onclick="selectModel('gemini-2.0-flash','Gemini 2.0','yellow')">
-                    <span class="model-dot yellow"></span>
-                    <div class="model-info"><span class="model-name">Gemini 2.0</span><span class="model-desc">Google · Мощный</span></div>
-                  </div>
-                  <div class="model-menu-item" data-model="deepseek-r1" onclick="selectModel('deepseek-r1','DeepSeek R1','green')">
-                    <span class="model-dot green"></span>
-                    <div class="model-info"><span class="model-name">DeepSeek R1</span><span class="model-desc">Рассуждения</span></div>
+                  <div class="model-dropdown-item" data-model-id="budget" onclick="selectModel('budget','🔵 Бюджет','blue')">
+                    <span class="model-dropdown-dot blue"></span>
+                    <div class="model-dropdown-info">
+                      <div class="model-dropdown-name">🔵 Бюджет</div>
+                      <div class="model-dropdown-desc">DeepSeek V3.2 · Экономный</div>
+                    </div>
+                    <div class="model-dropdown-price">₽0.01/1K</div>
                   </div>
                 </div>
               </div>
@@ -342,17 +346,17 @@
                 onkeydown="handleInputKey(event)" oninput="autoResize(this); updateCostHint()"></textarea>
 
               <div class="input-tools-right">
-                <button class="input-tool-btn" id="stopBtn" onclick="stopGeneration()" title="Остановить" style="display:none">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                <button class="input-tool-btn stop-btn" id="stopBtn" onclick="stopGeneration()" title="Остановить" style="display:none">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" fill="currentColor"/></svg>
                 </button>
-                <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="Отправить (Enter)">
+                <button class="send-btn" id="sendBtn" onclick="STATE.isGenerating ? injectMessage() : sendMessage()" title="Отправить (Enter)">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 </button>
               </div>
             </div>
 
             <div class="input-footer">
-              <span>Enter — отправить · Shift+Enter — новая строка · Ctrl+/ — поиск</span>
+              <span id="inputFooterHint">Enter — отправить · Shift+Enter — новая строка · Ctrl+/ — поиск</span>
               <span class="input-cost-hint" id="costHint"></span>
             </div>
           </div>
@@ -569,9 +573,15 @@
           <!-- populated by JS -->
         </div>
         <div class="admin-section">
-          <div class="admin-section-title">Пользователи</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div class="admin-section-title" style="margin:0;">Пользователи</div>
+            <button class="send-btn" onclick="adminCreateUser()" style="padding:7px 14px;font-size:13px;display:flex;align-items:center;gap:6px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Создать пользователя
+            </button>
+          </div>
           <table class="admin-table">
-            <thead><tr><th>Логин</th><th>Роль</th><th>Статус</th><th>Последний вход</th></tr></thead>
+            <thead><tr><th>Пользователь</th><th>Роль</th><th>Траты</th><th>Лимит</th><th>Статус</th><th>Действия</th></tr></thead>
             <tbody id="adminUsersTable"></tbody>
           </table>
         </div>

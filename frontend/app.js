@@ -20,7 +20,7 @@ const STATE = {
   chatCost: 0,
   taskCost: 0,
   totalTokens: 0,
-  selectedModel: 'meta-llama/llama-3.1-70b-instruct',
+  selectedModel: 'original',
   enhancedMode: false,
   agentComputerVisible: false,
   sidebarCollapsed: false,
@@ -49,17 +49,12 @@ const STATE = {
 // ── Config ─────────────────────────────────────────────────────
 const CONFIG = {
   BACKEND_URL: window.location.origin.includes('localhost') || window.location.origin.includes('8080') ? 'https://minimax.mksitdev.ru' : window.location.origin,
-  DEFAULT_MODEL: 'meta-llama/llama-3.1-70b-instruct',
-  USERS: {
-    admin: { password: 'admin', role: 'Admin', name: 'Admin' },
-    user: { password: 'user123', role: 'User', name: 'User' },
-  },
+  DEFAULT_MODEL: 'original',
+  USD_TO_RUB: 105,
   MODELS: {
-    'meta-llama/llama-3.1-70b-instruct': { name: 'Llama 3.1 70B', inputCost: 0.00000035, outputCost: 0.0000004 },
-    'anthropic/claude-3.5-sonnet': { name: 'Claude 3.5 Sonnet', inputCost: 0.000003, outputCost: 0.000015 },
-    'openai/gpt-4o': { name: 'GPT-4o', inputCost: 0.0000025, outputCost: 0.00001 },
-    'google/gemini-flash-1.5': { name: 'Gemini Flash 1.5', inputCost: 0.000000075, outputCost: 0.0000003 },
-    'deepseek/deepseek-r1': { name: 'DeepSeek R1', inputCost: 0.00000055, outputCost: 0.00000219 },
+    'original': { name: '🔴 Оригинал', desc: 'Grok Code Fast 1 · xAI', inputCost: 0.0000002, outputCost: 0.0000015 },
+    'premium':  { name: '🟢 Премиум',  desc: 'MiniMax M2.5 · MiniMax', inputCost: 0.00000027, outputCost: 0.00000095 },
+    'budget':   { name: '🔵 Бюджет',   desc: 'DeepSeek V3.2 · DeepSeek', inputCost: 0.00000026, outputCost: 0.00000038 },
   },
 };
 
@@ -456,7 +451,18 @@ function loadChat(chatId) {
 }
 
 function deleteChat(chatId, event) {
-  event.stopPropagation();
+  if (event) event.stopPropagation();
+  closeChatContextMenu();
+  if (!confirm('Удалить этот чат? Это действие необратимо.')) return;
+  // Delete from backend
+  const chat = STATE.chats[chatId];
+  const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+  if (chat?.backendId && token) {
+    fetch(`${CONFIG.BACKEND_URL}/api/chats/${chat.backendId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    }).catch(() => {});
+  }
   delete STATE.chats[chatId];
   saveChats();
   renderChatList();
@@ -466,6 +472,57 @@ function deleteChat(chatId, event) {
     else newChat();
   }
   addAuditEntry('chat', `Удалён чат ${chatId}`);
+  showToast('Чат удалён', 'info');
+}
+
+function renameChatInline(chatId, event) {
+  if (event) event.stopPropagation();
+  closeChatContextMenu();
+  const chat = STATE.chats[chatId];
+  if (!chat) return;
+  const newTitle = prompt('Переименовать чат:', chat.title);
+  if (newTitle && newTitle.trim()) {
+    chat.title = newTitle.trim();
+    saveChats();
+    renderChatList();
+    if (STATE.currentChatId === chatId) {
+      document.getElementById('chatTitle').textContent = chat.title;
+    }
+    showToast('Чат переименован', 'success');
+  }
+}
+
+let _chatMenuOpenId = null;
+function openChatContextMenu(chatId, event) {
+  event.stopPropagation();
+  closeChatContextMenu();
+  _chatMenuOpenId = chatId;
+  const menu = document.createElement('div');
+  menu.id = 'chatContextMenu';
+  menu.className = 'chat-context-menu';
+  menu.innerHTML = `
+    <button class="ctx-menu-item" onclick="renameChatInline('${chatId}', event)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      Переименовать
+    </button>
+    <button class="ctx-menu-item danger" onclick="deleteChat('${chatId}', event)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+      Удалить
+    </button>
+  `;
+  document.body.appendChild(menu);
+  // Position near the button
+  const rect = event.currentTarget.getBoundingClientRect();
+  menu.style.top = (rect.bottom + 4) + 'px';
+  menu.style.left = rect.left + 'px';
+  // Close on outside click
+  setTimeout(() => document.addEventListener('click', closeChatContextMenu, { once: true }), 0);
+}
+
+function closeChatContextMenu() {
+  const menu = document.getElementById('chatContextMenu');
+  if (menu) menu.remove();
+  _chatMenuOpenId = null;
 }
 
 function renderChatList() {
@@ -477,22 +534,23 @@ function renderChatList() {
     return;
   }
 
-  list.innerHTML = chats.map(chat => `
+  list.innerHTML = chats.map(chat => {
+    const costRub = chat.totalCost > 0 ? (chat.totalCost * CONFIG.USD_TO_RUB).toFixed(2) : null;
+    return `
     <div class="chat-item ${chat.id === STATE.currentChatId ? 'active' : ''}" 
          data-chat-id="${chat.id}" onclick="loadChat('${chat.id}')">
-      <span class="chat-item-icon">💬</span>
       <div class="chat-item-info">
         <div class="chat-item-title">${escapeHtml(chat.title)}</div>
         <div class="chat-item-meta">
           <span>${formatDate(chat.createdAt)}</span>
-          ${chat.totalCost > 0 ? `<span class="chat-item-cost">$${chat.totalCost.toFixed(4)}</span>` : ''}
+          ${costRub ? `<span class="chat-item-cost">₽${costRub}</span>` : ''}
         </div>
       </div>
-      <button class="chat-item-delete" onclick="deleteChat('${chat.id}', event)" title="Удалить">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <button class="chat-item-menu" onclick="openChatContextMenu('${chat.id}', event)" title="Действия">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>
       </button>
     </div>
-  `).join('');
+  `}).join('');
 }
 
 function filterChats(query) {
@@ -582,18 +640,52 @@ function createStreamingMessage() {
   const msgEl = document.createElement('div');
   msgEl.className = 'message assistant';
   msgEl.id = msgId;
+  msgEl.setAttribute('id', msgId);
 
+  // Thinking block (Manus-style)
+  const thinkId = 'think_' + msgId;
+  const thinkStartTime = Date.now();
   msgEl.innerHTML = `
     <div class="message-avatar" style="background:linear-gradient(135deg,#818cf8,#a855f7);">
       <svg width="14" height="14" viewBox="0 0 40 40" fill="none"><path d="M12 20L18 14L24 20L30 14" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
     <div class="message-body">
-      <div class="message-content streaming-cursor" id="content_${msgId}"></div>
+      <div class="thinking-block" id="${thinkId}">
+        <div class="thinking-header" onclick="toggleThinkingBlock('${thinkId}')">
+          <div class="thinking-dots"><span></span><span></span><span></span></div>
+          <span class="thinking-label">Мышление</span>
+          <span class="thinking-count" id="${thinkId}_count">1/1</span>
+          <span class="thinking-time" id="${thinkId}_time">0с</span>
+          <svg class="thinking-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+        </div>
+        <div class="thinking-steps" id="${thinkId}_steps"></div>
+      </div>
+      <div class="message-content" id="content_${msgId}"></div>
       <div class="message-meta" id="meta_${msgId}"></div>
     </div>
   `;
 
   messagesEl.appendChild(msgEl);
+  // Store reference for inject
+  document.getElementById('currentStreamMsg')?.removeAttribute('id');
+  msgEl.setAttribute('id', msgId);
+  const fakeRef = document.createElement('span');
+  fakeRef.id = 'currentStreamMsg';
+  fakeRef.style.display = 'none';
+  fakeRef.dataset.msgId = msgId;
+  messagesEl.appendChild(fakeRef);
+
+  // Start thinking timer
+  const timerEl = document.getElementById(thinkId + '_time');
+  const startTime = Date.now();
+  const timerInterval = setInterval(() => {
+    if (!STATE.isGenerating) { clearInterval(timerInterval); return; }
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    if (timerEl) timerEl.textContent = elapsed + 'с';
+  }, 1000);
+  msgEl._thinkTimer = timerInterval;
+  msgEl._thinkId = thinkId;
+
   scrollToBottom();
   return msgId;
 }
@@ -615,9 +707,10 @@ function finalizeStreamingMessage(msgId, fullText, cost, tokens) {
   const metaEl = document.getElementById('meta_' + msgId);
   if (metaEl) {
     const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    const costRub = cost > 0 ? (cost * CONFIG.USD_TO_RUB).toFixed(2) : null;
     metaEl.innerHTML = `
       <span>${time}</span>
-      ${cost > 0 ? `<span style="color:var(--accent-green);">$${cost.toFixed(6)}</span>` : ''}
+      ${cost > 0 ? `<span style="color:var(--accent-green);">$${cost.toFixed(6)} (₽${costRub})</span>` : ''}
       ${tokens > 0 ? `<span>${tokens} токенов</span>` : ''}
     `;
   }
@@ -705,6 +798,7 @@ async function callAPI(userMessage, chat) {
 
   // Add task step
   addTaskStep('🤔', 'Анализирую запрос...');
+  addThinkingStep(streamMsgId, '🤔', 'Анализирую запрос...');
 
   // Ensure chat exists on backend
   let backendChatId = chat.backendId;
@@ -727,7 +821,8 @@ async function callAPI(userMessage, chat) {
 
   try {
     STATE.currentAbortController = new AbortController();
-    addTaskStep('⚡', 'Генерирую ответ...');
+      addTaskStep('⚡', 'Генерирую ответ...');
+      addThinkingStep(streamMsgId, '⚡', 'Генерирую ответ...');
 
     let response;
     if (backendChatId && token) {
@@ -758,7 +853,18 @@ async function callAPI(userMessage, chat) {
       });
     }
 
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) {
+      // Handle spending limit exceeded (402)
+      if (response.status === 402) {
+        const errData = await response.json().catch(() => ({}));
+        const msg = errData.message || 'Лимит трат исчерпан. Обратитесь к администратору.';
+        finalizeThinkingBlock(msgId);
+        finalizeStreamingMessage(msgId, `⚠️ **${msg}**`, 0, 0);
+        showToast(msg, 'error');
+        return;
+      }
+      throw new Error(`HTTP ${response.status}`);
+    }
 
     if (response.headers.get('content-type')?.includes('text/event-stream')) {
       // SSE streaming — production API format
@@ -783,35 +889,44 @@ async function callAPI(userMessage, chat) {
             const type = parsed.type;
 
             if (type === 'meta') {
-              // Show model name and mode
               const mode = parsed.intent_mode || '';
               const modelName = parsed.model || '';
-              if (mode) addTaskStep('🔍', `Режим: ${mode} • ${modelName}`);
-              // Update model display
-              const modelBtn = document.getElementById('modelSelBtn');
-              if (modelBtn && modelName) modelBtn.textContent = modelName;
+              if (mode) {
+                addTaskStep('🔍', `Режим: ${mode} • ${modelName}`);
+                addThinkingStep(streamMsgId, '🔍', `Режим: ${mode} • ${modelName}`);
+              }
             } else if (type === 'agent_mode') {
-              addTaskStep('🤖', parsed.text || 'Агент работает...');
+              const txt = parsed.text || 'Агент работает...';
+              addTaskStep('🤖', txt);
+              addThinkingStep(streamMsgId, '🤖', txt);
             } else if (type === 'content') {
               fullText += parsed.text || '';
               updateStreamingMessage(streamMsgId, fullText);
             } else if (type === 'tool_call') {
-              addTaskStep('🔧', `Инструмент: ${parsed.tool || ''}`);
+              const tool = parsed.tool || '';
+              addTaskStep('🔧', `Инструмент: ${tool}`);
+              addThinkingStep(streamMsgId, '🔧', `Инструмент: ${tool}`);
             } else if (type === 'tool_result') {
-              addTaskStep('✅', `Результат: ${(parsed.output || '').substring(0, 60)}`);
+              const out = (parsed.output || '').substring(0, 80);
+              addTaskStep('✅', `Результат: ${out}`);
+              addThinkingStep(streamMsgId, '✅', `Результат: ${out}`);
             } else if (type === 'file') {
               addTaskStep('📄', `Файл: ${parsed.filename || ''}`);
+              addThinkingStep(streamMsgId, '📄', `Файл: ${parsed.filename || ''}`);
               if (parsed.url) {
                 fullText += `\n\n[📎 ${parsed.filename}](${backendUrl}${parsed.url})`;
                 updateStreamingMessage(streamMsgId, fullText);
               }
             } else if (type === 'error') {
-              addTaskStep('❌', parsed.message || 'Ошибка');
+              const errMsg = parsed.message || 'Ошибка';
+              addTaskStep('❌', errMsg);
+              addThinkingStep(streamMsgId, '❌', errMsg);
             } else if (type === 'done') {
               inputTokens = parsed.tokens_in || 0;
               outputTokens = parsed.tokens_out || 0;
             } else if (type === 'step') {
-              addTaskStep('📍', parsed.text || '');
+              addTaskStep('📈', parsed.text || '');
+              addThinkingStep(streamMsgId, '📈', parsed.text || '');
             }
           } catch(e) {}
         }
@@ -847,8 +962,11 @@ async function callAPI(userMessage, chat) {
 
   // Calculate cost
   const modelConfig = CONFIG.MODELS[STATE.selectedModel] || CONFIG.MODELS[CONFIG.DEFAULT_MODEL];
-  const cost = (inputTokens * modelConfig.inputCost) + (outputTokens * modelConfig.outputCost);
+  const cost = (inputTokens * (modelConfig.inputCost || 0)) + (outputTokens * (modelConfig.outputCost || 0));  // cost in USD
   const totalTokens = inputTokens + outputTokens;
+
+  // Finalize thinking block
+  finalizeThinkingBlock(streamMsgId);
 
   // Update state
   STATE.taskCost = cost;
@@ -975,6 +1093,45 @@ function generateFallbackResponse(query) {
 }
 
 // ── Task Stream ────────────────────────────────────────────────
+function addThinkingStep(msgId, icon, text) {
+  const thinkId = 'think_' + msgId;
+  const stepsEl = document.getElementById(thinkId + '_steps');
+  const countEl = document.getElementById(thinkId + '_count');
+  if (!stepsEl) return;
+
+  const step = document.createElement('div');
+  step.className = 'thinking-step';
+  const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  step.innerHTML = `
+    <span class="thinking-step-icon">${icon}</span>
+    <span class="thinking-step-text">${escapeHtml(text)}</span>
+    <span class="thinking-step-time">${time}</span>
+  `;
+  stepsEl.appendChild(step);
+  stepsEl.scrollTop = stepsEl.scrollHeight;
+
+  // Update count
+  const count = stepsEl.querySelectorAll('.thinking-step').length;
+  if (countEl) countEl.textContent = count + '/' + count;
+}
+
+function toggleThinkingBlock(thinkId) {
+  const block = document.getElementById(thinkId);
+  if (block) block.classList.toggle('collapsed');
+}
+
+function finalizeThinkingBlock(msgId) {
+  const thinkId = 'think_' + msgId;
+  const block = document.getElementById(thinkId);
+  const msgEl = document.getElementById(msgId);
+  if (msgEl?._thinkTimer) clearInterval(msgEl._thinkTimer);
+  if (block) {
+    block.classList.add('done');
+    // Auto-collapse after 1s
+    setTimeout(() => block.classList.add('collapsed'), 1000);
+  }
+}
+
 function addTaskStep(icon, text) {
   STATE.taskStepCount++;
   STATE.taskSteps.push({ icon, text, time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) });
@@ -1011,17 +1168,23 @@ function showGenerationUI(show) {
   const sendBtn = document.getElementById('sendBtn');
   const stopBtn = document.getElementById('stopBtn');
 
+  const footerHint = document.getElementById('inputFooterHint');
+  const chatInput = document.getElementById('chatInput');
   if (show) {
     if (progress) progress.classList.remove('hidden');
     if (statusBadge) statusBadge.classList.remove('hidden');
-    if (sendBtn) { sendBtn.style.display = 'none'; }
+    if (sendBtn) { sendBtn.style.display = 'flex'; sendBtn.title = 'Перебить агента (Enter)'; }
     if (stopBtn) { stopBtn.style.display = 'flex'; }
+    if (footerHint) { footerHint.textContent = '⚡ Агент работает — напиши задачу и нажми Enter чтобы перебить · ■ — остановить'; footerHint.className = 'input-footer-inject'; }
+    if (chatInput) { chatInput.placeholder = 'Перебить агента: напиши задачу и нажми Enter...'; }
     animateProgress();
   } else {
     if (progress) progress.classList.add('hidden');
     if (statusBadge) statusBadge.classList.add('hidden');
-    if (sendBtn) { sendBtn.style.display = 'flex'; }
+    if (sendBtn) { sendBtn.style.display = 'flex'; sendBtn.title = 'Отправить (Enter)'; }
     if (stopBtn) { stopBtn.style.display = 'none'; }
+    if (footerHint) { footerHint.textContent = 'Enter — отправить · Shift+Enter — новая строка · Ctrl+/ — поиск'; footerHint.className = ''; }
+    if (chatInput) { chatInput.placeholder = 'Напишите задачу или вопрос...'; }
     const steps = document.getElementById('taskSteps');
     if (steps) steps.innerHTML = '';
   }
@@ -1098,16 +1261,49 @@ function closeModelDropdownOutside(e) {
 
 function selectModel(modelId, modelName, dotColor) {
   STATE.selectedModel = modelId;
-  document.getElementById('modelSelLabel').textContent = modelName;
-  document.getElementById('modelDot').className = `model-dropdown-dot ${dotColor}`;
-  document.getElementById('modelMenu').classList.add('hidden');
-  document.getElementById('modelSelBtn').setAttribute('aria-expanded', 'false');
+  const model = CONFIG.MODELS[modelId];
+  // Update button label with chevron
+  const labelEl = document.getElementById('modelSelLabel');
+  if (labelEl) labelEl.textContent = model?.name || modelName;
+  const dotEl = document.getElementById('modelDot');
+  if (dotEl) dotEl.className = `model-dropdown-dot ${dotColor}`;
+  document.getElementById('modelMenu')?.classList.add('hidden');
+  document.getElementById('modelSelBtn')?.setAttribute('aria-expanded', 'false');
 
-  // Update active state
+  // Update active state in dropdown
   document.querySelectorAll('.model-dropdown-item').forEach(el => el.classList.remove('active'));
-  event?.currentTarget?.classList.add('active');
+  // Mark the clicked item active
+  const items = document.querySelectorAll('.model-dropdown-item');
+  items.forEach(el => { if (el.dataset.modelId === modelId) el.classList.add('active'); });
 
-  showToast(`Модель: ${modelName}`, 'info');
+  // Save to settings
+  STATE.settings.defaultModel = modelId;
+  saveSettings();
+
+  showToast(`Модель: ${model?.name || modelName}`, 'info');
+}
+
+function renderModelDropdown() {
+  const menu = document.getElementById('modelMenu');
+  if (!menu) return;
+  menu.innerHTML = Object.entries(CONFIG.MODELS).map(([id, m]) => {
+    const dotColors = { original: 'red', premium: 'green', budget: 'blue' };
+    const dot = dotColors[id] || 'gray';
+    // Estimate cost per 1000 tokens in RUB
+    const costPer1k = ((m.inputCost + m.outputCost) / 2 * 1000 * CONFIG.USD_TO_RUB).toFixed(2);
+    return `
+      <div class="model-dropdown-item ${STATE.selectedModel === id ? 'active' : ''}" 
+           data-model-id="${id}"
+           onclick="selectModel('${id}', '${m.name}', '${dot}')">
+        <span class="model-dropdown-dot ${dot}"></span>
+        <div class="model-dropdown-info">
+          <div class="model-dropdown-name">${m.name}</div>
+          <div class="model-dropdown-desc">${m.desc}</div>
+        </div>
+        <div class="model-dropdown-price">₽${costPer1k}/1K</div>
+      </div>
+    `;
+  }).join('');
 }
 
 function toggleEnhanced() {
@@ -1157,8 +1353,73 @@ function jumpToLive() {
 function handleInputKey(event) {
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault();
-    sendMessage();
+    if (STATE.isGenerating) {
+      injectMessage();
+    } else {
+      sendMessage();
+    }
   }
+}
+
+// Inject a new message while agent is running
+function injectMessage() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  autoResizeInput(input);
+
+  // Save partial response if any
+  const streamEl = document.getElementById('currentStreamMsg');
+  const chat = STATE.chats[STATE.currentChatId];
+  if (streamEl && chat) {
+    const partialContent = streamEl.querySelector('[id^="content_"]')?.innerText || '';
+    if (partialContent) {
+      chat.messages.push({ role: 'assistant', content: '[Прервано] ' + partialContent, cost: 0, tokens: 0 });
+    }
+  }
+
+  // Abort current generation
+  if (STATE.currentAbortController) STATE.currentAbortController.abort();
+  STATE.isGenerating = false;
+  STATE.isPaused = false;
+  showGenerationUI(false);
+
+  // Add inject marker
+  addTaskStep('⚡', 'Пользователь перебил: ' + text.substring(0, 60));
+  showToast('Запрос перехвачен', 'info');
+
+  // Add user message and restart
+  if (chat) {
+    chat.messages.push({ role: 'user', content: text });
+    renderMessage('user', text);
+    saveChats();
+    if (chat.messages.length === 1) {
+      chat.title = text.length > 40 ? text.substring(0, 40) + '...' : text;
+      document.getElementById('chatTitle').textContent = chat.title;
+      renderChatList();
+    }
+  }
+
+  // Restart generation
+  STATE.isGenerating = true;
+  STATE.taskCost = 0;
+  STATE.taskStepCount = 0;
+  STATE.taskSteps = [];
+  showGenerationUI(true);
+  addAuditEntry('chat', 'Прервано и перезапущено: ' + text.substring(0, 60));
+
+  callAPI(text, chat).then(() => {
+    STATE.isGenerating = false;
+    STATE.isPaused = false;
+    showGenerationUI(false);
+    saveChats();
+    renderChatList();
+  }).catch(e => {
+    if (e.name !== 'AbortError') showToast('Ошибка: ' + (e.message || ''), 'error');
+    STATE.isGenerating = false;
+    showGenerationUI(false);
+  });
 }
 
 function autoResizeInput(textarea) {
@@ -1454,12 +1715,49 @@ function clearAllData() {
   setTimeout(() => location.reload(), 1000);
 }
 
-function updateUsageStats() {
+async function updateUsageStats() {
   const totalCost = STATE.analytics.reduce((sum, a) => sum + (a.cost || 0), 0);
   const totalTokens = STATE.analytics.reduce((sum, a) => sum + (a.inputTokens || 0) + (a.outputTokens || 0), 0);
   const container = document.getElementById('usageStats');
   if (!container) return;
+  // Fetch real-time balance from backend
+  let balanceHtml = '';
+  try {
+    const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+    const meResp = await fetch(`${CONFIG.BACKEND_URL}/api/auth/me`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (meResp.ok) {
+      const me = await meResp.json();
+      const spentRub = me.total_spent_rub || (me.total_spent * 105).toFixed(2);
+      const limitRub = me.monthly_limit_rub;
+      const remaining = me.balance_remaining;
+      const pct = me.limit_used_percent || 0;
+      const barColor = pct > 80 ? '#ef4444' : pct > 60 ? 'var(--accent-orange)' : 'var(--accent-green)';
+      if (limitRub) {
+        balanceHtml = `
+          <div class="stat-card" style="grid-column:1/-1;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <span style="font-size:12px;color:var(--text2);">Баланс (реальное время)</span>
+              <span style="font-size:11px;color:var(--text3);">${pct}% использовано</span>
+            </div>
+            <div style="height:6px;background:var(--bg4);border-radius:3px;margin-bottom:8px;">
+              <div style="height:100%;width:${Math.min(pct,100)}%;background:${barColor};border-radius:3px;transition:width 0.5s;"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+              <span style="font-size:13px;color:var(--text2);">Потрачено: <b style="color:${barColor};">₽${spentRub}</b></span>
+              <span style="font-size:13px;color:var(--text2);">Остаток: <b style="color:var(--accent-green);">₽${remaining}</b></span>
+              <span style="font-size:13px;color:var(--text2);">Лимит: <b>₽${limitRub}</b></span>
+            </div>
+          </div>
+        `;
+      } else {
+        balanceHtml = `<div class="stat-card"><div class="stat-value" style="color:var(--accent-green);">₽${spentRub}</div><div class="stat-label">Потрачено (реальное время)</div></div>`;
+      }
+    }
+  } catch(e) { /* ignore */ }
   container.innerHTML = `
+    ${balanceHtml}
     <div class="stat-card"><div class="stat-value" style="color:var(--accent-green);">$${totalCost.toFixed(4)}</div><div class="stat-label">Всего потрачено</div></div>
     <div class="stat-card"><div class="stat-value" style="color:var(--accent-blue);">${totalTokens.toLocaleString()}</div><div class="stat-label">Всего токенов</div></div>
     <div class="stat-card"><div class="stat-value" style="color:var(--accent-purple);">${STATE.analytics.length}</div><div class="stat-label">Запросов</div></div>
@@ -1878,30 +2176,149 @@ function filterAuditType(type) {
 }
 
 // ── Admin Panel ────────────────────────────────────────────────
-function renderAdminPanel() {
-  const stats = document.getElementById('adminStats');
-  if (stats) {
-    const totalCost = STATE.analytics.reduce((sum, a) => sum + (a.cost || 0), 0);
-    stats.innerHTML = `
-      <div class="stat-card"><div class="stat-value" style="color:var(--accent-green);">$${totalCost.toFixed(4)}</div><div class="stat-label">Общие расходы</div></div>
-      <div class="stat-card"><div class="stat-value" style="color:var(--accent-blue);">${STATE.analytics.length}</div><div class="stat-label">Запросов</div></div>
-      <div class="stat-card"><div class="stat-value" style="color:var(--accent-purple);">${Object.keys(STATE.chats).length}</div><div class="stat-label">Чатов</div></div>
-      <div class="stat-card"><div class="stat-value" style="color:var(--accent-orange);">${STATE.auditLog.length}</div><div class="stat-label">Событий аудита</div></div>
-    `;
-  }
+async function renderAdminPanel() {
+  if (STATE.currentUser?.role !== 'admin') return;
 
-  const usersTable = document.getElementById('adminUsersTable');
-  if (usersTable) {
-    usersTable.innerHTML = Object.entries(CONFIG.USERS).map(([username, user]) => `
-      <tr>
-        <td>${username}</td>
-        <td>${user.role}</td>
-        <td>${new Date().toLocaleDateString('ru-RU')}</td>
-        <td>${STATE.analytics.length}</td>
-        <td><button class="admin-btn" onclick="showToast('Действие выполнено', \'info\')">Управление</button></td>
-      </tr>
-    `).join('');
+  const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+
+  // Load stats from backend
+  try {
+    const resp = await fetch(`${CONFIG.BACKEND_URL}/api/admin/users`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const users = data.users || [];
+
+    // Stats cards
+    const stats = document.getElementById('adminStats');
+    if (stats) {
+      const totalSpent = users.reduce((s, u) => s + (u.total_spent || 0), 0);
+      const activeUsers = users.filter(u => u.is_active).length;
+      stats.innerHTML = `
+        <div class="stat-card"><div class="stat-value" style="color:var(--accent-green);">$${totalSpent.toFixed(4)}</div><div class="stat-label">Общие расходы</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--accent-green);"><b>₽${(totalSpent * CONFIG.USD_TO_RUB).toFixed(2)}</b></div><div class="stat-label">Рублей потрачено</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--accent-blue);">${users.length}</div><div class="stat-label">Пользователей</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--accent-green);">${activeUsers}</div><div class="stat-label">Активных</div></div>
+      `;
+    }
+
+    // Users table
+    const usersTable = document.getElementById('adminUsersTable');
+    if (usersTable) {
+      usersTable.innerHTML = users.map(u => {
+        const spentRub = (u.total_spent * CONFIG.USD_TO_RUB).toFixed(2);
+        const limitRub = u.monthly_limit ? (u.monthly_limit * CONFIG.USD_TO_RUB).toFixed(0) : '∞';
+        const limitPct = u.monthly_limit ? Math.min(100, (u.total_spent / u.monthly_limit * 100)).toFixed(0) : 0;
+        return `
+          <tr class="${!u.is_active ? 'user-disabled' : ''}">
+            <td>
+              <div style="font-weight:500;">${escapeHtml(u.name || u.email)}</div>
+              <div style="font-size:11px;color:var(--text3);">${escapeHtml(u.email)}</div>
+            </td>
+            <td><span class="role-badge ${u.role}">${u.role === 'admin' ? 'Админ' : 'Пользователь'}</span></td>
+            <td>
+              <div style="color:var(--accent-green);">₽${spentRub}</div>
+              <div style="font-size:11px;color:var(--text3);">$${u.total_spent.toFixed(4)}</div>
+            </td>
+            <td>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <div style="flex:1;height:4px;background:var(--bg4);border-radius:2px;min-width:60px;">
+                  <div style="height:100%;width:${limitPct}%;background:${limitPct > 80 ? 'var(--accent-red,#ef4444)' : 'var(--accent)'};border-radius:2px;"></div>
+                </div>
+                <span style="font-size:11px;color:var(--text3);white-space:nowrap;">₽${limitRub}</span>
+              </div>
+            </td>
+            <td>
+              <span class="status-badge ${u.is_active ? 'active' : 'disabled'}">${u.is_active ? 'Активен' : 'Заблокирован'}</span>
+            </td>
+            <td>
+              <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                <button class="admin-btn" onclick="adminEditUser('${u.id}', '${escapeHtml(u.name)}', '${escapeHtml(u.email)}', ${u.monthly_limit || 0})">Изменить</button>
+                <button class="admin-btn" onclick="adminToggleUser('${u.id}', ${u.is_active})" style="${u.is_active ? 'color:var(--accent-red,#ef4444);' : 'color:var(--accent-green);'}">${u.is_active ? 'Блок' : 'Разблок'}</button>
+                <button class="admin-btn" onclick="adminChangePassword('${u.id}')">Пароль</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+  } catch(e) {
+    console.error('Admin panel error:', e);
   }
+}
+
+async function adminCreateUser() {
+  const email = prompt('Емайл нового пользователя:');
+  if (!email) return;
+  const password = prompt('Пароль:');
+  if (!password) return;
+  const name = prompt('Имя (необязательно):', email.split('@')[0]) || email.split('@')[0];
+  const limitStr = prompt('Лимит трат в долларах (0 = без лимита):', '10');
+  const monthly_limit = parseFloat(limitStr) || 10;
+  const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+  try {
+    const resp = await fetch(`${CONFIG.BACKEND_URL}/api/admin/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ email, password, name, monthly_limit })
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      showToast('Пользователь создан', 'success');
+      renderAdminPanel();
+    } else {
+      showToast('Ошибка: ' + (data.error || ''), 'error');
+    }
+  } catch(e) { showToast('Ошибка сети', 'error'); }
+}
+
+async function adminEditUser(userId, name, email, currentLimit) {
+  const newName = prompt('Имя:', name);
+  if (newName === null) return;
+  const limitStr = prompt('Лимит трат ($, 0 = без лимита):', currentLimit);
+  if (limitStr === null) return;
+  const monthly_limit = parseFloat(limitStr) || 0;
+  const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+  try {
+    const resp = await fetch(`${CONFIG.BACKEND_URL}/api/admin/users/${userId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ name: newName, monthly_limit })
+    });
+    if (resp.ok) {
+      showToast('Пользователь обновлён', 'success');
+      renderAdminPanel();
+    }
+  } catch(e) { showToast('Ошибка сети', 'error'); }
+}
+
+async function adminToggleUser(userId, isActive) {
+  const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+  try {
+    const resp = await fetch(`${CONFIG.BACKEND_URL}/api/admin/users/${userId}/toggle`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      showToast(isActive ? 'Пользователь заблокирован' : 'Пользователь разблокирован', 'success');
+      renderAdminPanel();
+    }
+  } catch(e) { showToast('Ошибка сети', 'error'); }
+}
+
+async function adminChangePassword(userId) {
+  const newPass = prompt('Новый пароль:');
+  if (!newPass || newPass.length < 4) { showToast('Пароль должен быть не менее 4 символов', 'warning'); return; }
+  const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+  try {
+    const resp = await fetch(`${CONFIG.BACKEND_URL}/api/admin/users/${userId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ password: newPass })
+    });
+    if (resp.ok) showToast('Пароль изменён', 'success');
+  } catch(e) { showToast('Ошибка сети', 'error'); }
 }
 
 // ── Command Palette ────────────────────────────────────────────
