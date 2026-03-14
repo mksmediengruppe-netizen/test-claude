@@ -1180,28 +1180,27 @@ def send_message(chat_id):
     agent_model_name = config["tools"]["name"]
 
     # Detect if this is an agent task (needs SSH/files/browser) or simple chat
-    # Agent keywords — actions that require real execution on servers
-        # ══ LLM ORCHESTRATOR: определяем намерение через AI, а не ключевые слова ══
-        # Build chat history for context (needed for orchestrator too)
-        history = []
-        for m in chat.get("messages", []):
-            history.append({"role": m["role"], "content": m["content"][:200]})
+    # ══ LLM ORCHESTRATOR: определяем намерение через AI, а не ключевые слова ══
+    # Build chat history for context (needed for orchestrator too)
+    history = []
+    for m in chat.get("messages", []):
+        history.append({"role": m["role"], "content": m["content"][:200]})
 
-        # Определяем намерение
-        if ssh_from_msg:
-            intent = {"mode": "deploy", "reason": "SSH креденциалы в сообщении", "confidence": 1.0}
-        else:
-            intent = detect_intent_llm(user_message, history, OPENROUTER_API_KEY)
+    # Определяем намерение
+    if ssh_from_msg:
+        intent = {"mode": "deploy", "reason": "SSH креденциалы в сообщении", "confidence": 1.0}
+    else:
+        intent = detect_intent_llm(user_message, history, OPENROUTER_API_KEY)
 
-        mode = intent["mode"]  # chat | file | deploy | research | data
+    mode = intent["mode"]  # chat | file | deploy | research | data
 
-        is_agent_task = (mode == "deploy")
-        is_file_task = (mode == "file")
-        is_browser_task = (mode == "research")
-        has_url = bool(re.search(r'https?://\S+', user_message))
-        if has_url and mode == "chat":
-            is_browser_task = True
-        is_lite_agent = (mode in ("file", "research", "data")) and not has_ssh and not (is_agent_task and has_ssh)
+    is_agent_task = (mode == "deploy")
+    is_file_task = (mode == "file")
+    is_browser_task = (mode == "research")
+    has_url = bool(re.search(r'https?://\S+', user_message))
+    if has_url and mode == "chat":
+        is_browser_task = True
+    is_lite_agent = (mode in ("file", "research", "data")) and not has_ssh and not (is_agent_task and has_ssh)
 
     # Build chat history for context
     history = [{"role": m["role"], "content": m["content"]} for m in chat["messages"][-10:]]
