@@ -379,13 +379,13 @@ function closeMobileSidebar() {
 // ── Tab Navigation ─────────────────────────────────────────────
 function switchTab(tabName, btn) {
   // Hide all tab panes
-  document.querySelectorAll('[id^="tab-"]').forEach(el => el.classList.add('hidden'));
+  document.querySelectorAll('[id^="tab-"]').forEach(el => { el.classList.add('hidden'); el.classList.remove('active'); });
   // Remove active from all nav items
   document.querySelectorAll('.nav-item, .sb-nav-item').forEach(el => el.classList.remove('active'));
 
   // Show selected tab
   const tabEl = document.getElementById('tab-' + tabName);
-  if (tabEl) tabEl.classList.remove('hidden');
+  if (tabEl) { tabEl.classList.remove('hidden'); tabEl.classList.add('active'); }
 
   // Activate nav button
   if (btn) btn.classList.add('active');
@@ -398,6 +398,11 @@ function switchTab(tabName, btn) {
   // Tab-specific init
   if (tabName === 'analytics') renderAnalytics();
   if (tabName === 'admin') renderAdminPanel();
+  if (tabName === 'agents') renderAgents();
+  if (tabName === 'templates') renderTemplates();
+  if (tabName === 'connectors') renderConnectors();
+  if (tabName === 'scheduled') renderScheduledTasks();
+  if (tabName === 'audit') renderAuditLog();
 }
 
 // ── Chat Management ────────────────────────────────────────────
@@ -441,7 +446,13 @@ function loadChat(chatId) {
     titleEl.title = '';
   }
   document.getElementById('chatCostDisplay').textContent = '$' + STATE.chatCost.toFixed(4);
-  document.getElementById('totalTokensVal').textContent = STATE.totalTokens.toLocaleString();
+  const tokensValEl = document.getElementById('totalTokensVal');
+  if (tokensValEl) tokensValEl.textContent = STATE.totalTokens.toLocaleString();
+  const msgCountEl = document.getElementById('chatMsgCount');
+  if (msgCountEl) {
+    const cnt = chat.messages?.length || chat.messageCount || 0;
+    msgCountEl.textContent = cnt + ' ' + (cnt === 1 ? 'сообщение' : cnt >= 2 && cnt <= 4 ? 'сообщения' : 'сообщений');
+  }
 
   // Render messages
   const messagesEl = document.getElementById('messages');
@@ -564,9 +575,14 @@ function openChatContextMenu(chatId, event) {
   `;
   document.body.appendChild(menu);
   // Position near the button
-  const rect = event.currentTarget.getBoundingClientRect();
-  menu.style.top = (rect.bottom + 4) + 'px';
-  menu.style.left = rect.left + 'px';
+  if (event.currentTarget && event.currentTarget.getBoundingClientRect) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    menu.style.top = (rect.bottom + 4) + 'px';
+    menu.style.left = rect.left + 'px';
+  } else {
+    menu.style.top = ((event.clientY || 200) + 4) + 'px';
+    menu.style.left = ((event.clientX || 200)) + 'px';
+  }
   // Close on outside click
   setTimeout(() => document.addEventListener('click', closeChatContextMenu, { once: true }), 0);
 }
@@ -816,6 +832,15 @@ function finalizeStreamingMessage(msgId, fullText, cost, tokens) {
       ${cost > 0 ? `<span style="color:var(--accent-green);">$${cost.toFixed(6)} (₽${costRub})</span>` : ''}
       ${tokens > 0 ? `<span>${tokens} токенов</span>` : ''}
     `;
+  }
+  // Update message count in header
+  const chat = STATE.chats[STATE.currentChatId];
+  if (chat) {
+    const msgCountEl = document.getElementById('chatMsgCount');
+    if (msgCountEl) {
+      const cnt = chat.messages?.length || 0;
+      msgCountEl.textContent = cnt + ' ' + (cnt === 1 ? 'сообщение' : cnt >= 2 && cnt <= 4 ? 'сообщения' : 'сообщений');
+    }
   }
   // Add action buttons
   const msgEl = document.getElementById(msgId);
@@ -1696,8 +1721,8 @@ function clearChat() {if (!confirm('Очистить историю этого �
   STATE.taskCost = 0;
   STATE.totalTokens = 0;
   document.getElementById('chatCostDisplay').textContent = '$0.0000';
-  document.getElementById('chatCostDisplay').textContent = '$0.0000';
-  document.getElementById('totalTokensVal').textContent = '0';
+  const clearTokEl = document.getElementById('totalTokensVal');
+  if (clearTokEl) clearTokEl.textContent = '0';
   document.getElementById('messages').querySelectorAll('.message').forEach(m => m.remove());
   document.getElementById('welcomeScreen').style.display = 'flex';
   saveChats();

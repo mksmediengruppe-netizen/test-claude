@@ -511,7 +511,7 @@ def list_chats():
                 "total_cost": chat.get("total_cost", 0.0),
                 "model_used": chat.get("model_used", ""),
                 "variant": chat.get("variant", "premium"),
-                "owner": db["users"].get(chat.get("user_id",""), {}).get("email", "") if is_admin and chat.get("user_id") != request.user_id else ""
+                "owner": (db["users"].get(chat.get("user_id",""), {}).get("name") or db["users"].get(chat.get("user_id",""), {}).get("email", chat.get("user_id",""))) if is_admin else ""
             })
 
     user_chats.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
