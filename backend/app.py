@@ -39,6 +39,9 @@ from file_generator import (
 )
 from file_reader import read_file as read_any_file, FileReadResult, get_supported_formats
 from model_router import select_model, classify_complexity, log_cost, get_cost_analytics, get_fallback_model
+from specialized_agents import SPECIALIZED_AGENTS, select_agents_for_task, get_agent_pipeline, get_all_agents
+from parallel_agents import ParallelAgentOrchestrator
+from project_memory import ProjectMemory
 import logging
 
 app = Flask(__name__)
@@ -1260,10 +1263,38 @@ def send_message(chat_id):
 
         elif is_agent_task and has_ssh:
             # ═══ AGENT MODE: Real execution with SSH/Browser/Files ═══
-            yield f"data: {json.dumps({'type': 'agent_mode', 'text': 'Запускаю автономный агент...'})}\n\n"
 
-            if enhanced:
-                # Multi-agent pipeline
+            # ── Project Memory: load context from previous sessions ──
+            try:
+                pm = ProjectMemory(user_id=request.user_id, project_id=chat_id)
+                pm.start_session(chat_id, task=user_message[:200])
+                memory_context = pm.get_full_context(chat_id)
+                if memory_context:
+                    yield f"data: {json.dumps({'type': 'memory_loaded', 'text': 'Контекст предыдущих сессий загружен', 'context_length': len(memory_context)})}\n\n"
+            except Exception:
+                pm = None
+                memory_context = ""
+
+            # ── Select agent execution mode ──
+            selected_agents = select_agents_for_task(user_message, mode)
+            use_parallel = len(selected_agents) >= 2 and enhanced
+            agent_names = [a.get('name', '?') for a in selected_agents]
+
+            yield f"data: {json.dumps({'type': 'agent_mode', 'text': 'Запускаю автономный агент...', 'agents': agent_names, 'parallel': use_parallel})}\n\n"
+
+            if use_parallel:
+                # ── Parallel multi-agent execution ──
+                orchestrator = ParallelAgentOrchestrator(
+                    model=agent_model,
+                    api_key=OPENROUTER_API_KEY,
+                    api_url=OPENROUTER_BASE_URL,
+                    ssh_credentials=ssh_credentials,
+                    max_workers=min(3, len(selected_agents))
+                )
+                agent = orchestrator  # For stop functionality
+
+            elif enhanced:
+                # Multi-agent pipeline (sequential, 6 specialized agents)
                 agent = MultiAgentLoop(
                     model=agent_model,
                     api_key=OPENROUTER_API_KEY,
@@ -1284,7 +1315,13 @@ def send_message(chat_id):
                 _active_agents[chat_id] = agent
 
             try:
-                if enhanced:
+                if use_parallel:
+                    agent_keys = [a.get('key', a.get('role', '')) for a in selected_agents]
+                    event_gen = orchestrator.run_parallel(
+                        user_message, history, file_content,
+                        agent_keys=agent_keys, mode=mode
+                    )
+                elif enhanced:
                     event_gen = agent.run_multi_agent_stream(user_message, history, file_content)
                 else:
                     event_gen = agent.run_stream(user_message, history, file_content)
@@ -1299,9 +1336,18 @@ def send_message(chat_id):
                     except:
                         pass
 
-                # Get token counts from agent
-                tokens_in = agent.total_tokens_in
-                tokens_out = agent.total_tokens_out
+                 # Get token counts from agent
+                if hasattr(agent, 'total_tokens_in'):
+                    tokens_in = agent.total_tokens_in
+                    tokens_out = agent.total_tokens_out
+
+                # ── Project Memory: save session summary ──
+                try:
+                    if pm and full_response:
+                        summary = full_response[:300] if len(full_response) > 300 else full_response
+                        pm.complete_session(chat_id, summary=summary)
+                except Exception:
+                    pass
 
             finally:
                 with _agents_lock:
@@ -2873,6 +2919,82 @@ def classify_query_complexity():
         return jsonify({"success": True, "result": result})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# ██ SPECIALIZED AGENTS API ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/specialized-agents", methods=["GET"])
+@require_auth
+def get_specialized_agents_list():
+    """Get list of all 6 specialized agents."""
+    agents = get_all_agents()
+    return jsonify({"success": True, "agents": agents, "count": len(agents)})
+
+
+@app.route("/api/specialized-agents/select", methods=["POST"])
+@require_auth
+def select_agents_api():
+    """Select best agents for a task."""
+    data = request.get_json() or {}
+    query = data.get("query", "")
+    mode = data.get("mode", "chat")
+    max_agents = data.get("max_agents", 3)
+    agents = select_agents_for_task(query, mode, max_agents=max_agents)
+    return jsonify({"success": True, "agents": agents})
+
+
+@app.route("/api/specialized-agents/pipelines", methods=["GET"])
+@require_auth
+def get_agent_pipelines():
+    """Get predefined agent pipelines."""
+    pipelines = {}
+    for ptype in ["deploy", "website", "api", "full_project"]:
+        pipelines[ptype] = get_agent_pipeline(ptype)
+    return jsonify({"success": True, "pipelines": pipelines})
+
+
+# ══════════════════════════════════════════════════════════════════
+# ██ PROJECT MEMORY API ██
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/project-memory/context", methods=["POST"])
+@require_auth
+def get_project_memory_context():
+    """Get full project memory context for a chat."""
+    data = request.get_json() or {}
+    chat_id = data.get("chat_id", "")
+    project_id = data.get("project_id")
+    pm = ProjectMemory(user_id=request.user_id, project_id=project_id)
+    context = pm.get_full_context(chat_id)
+    return jsonify({"success": True, "context": context, "length": len(context)})
+
+
+@app.route("/api/project-memory/active-tasks", methods=["GET"])
+@require_auth
+def get_active_tasks_api():
+    """Get all active/paused tasks."""
+    pm = ProjectMemory(user_id=request.user_id)
+    tasks = pm.get_active_tasks()
+    return jsonify({"success": True, "tasks": tasks, "count": len(tasks)})
+
+
+@app.route("/api/project-memory/checkpoint", methods=["POST"])
+@require_auth
+def save_task_checkpoint():
+    """Save a task checkpoint for later resumption."""
+    data = request.get_json() or {}
+    pm = ProjectMemory(user_id=request.user_id, project_id=data.get("project_id"))
+    result = pm.save_checkpoint(
+        chat_id=data.get("chat_id", ""),
+        task=data.get("task", ""),
+        progress=data.get("progress", ""),
+        steps_completed=data.get("steps_completed", []),
+        steps_remaining=data.get("steps_remaining", []),
+        context=data.get("context", {})
+    )
+    return jsonify({"success": True, "checkpoint": result})
 
 
 # ══════════════════════════════════════════════════════════════════
