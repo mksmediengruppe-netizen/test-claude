@@ -1007,6 +1007,14 @@ def send_message(chat_id):
         "сходи", "папк", "директор",
         "лог", "процесс", "порт", "диск",
         "uptime", "top", "ls ", "cat ", "mkdir",
+        # Browser / web tasks
+        "зайди на сайт", "зайди на", "открой сайт", "открой страниц",
+        "перейди на", "посети сайт", "проверь сайт", "проверь страниц",
+        "протестируй сайт", "протестируй интерфейс", "протестируй веб",
+        "browse", "visit", "navigate to", "open site", "open url",
+        "http://", "https://",
+        "что на сайте", "что там написано", "что показывает сайт",
+        "скриншот сайта", "скриншот страниц",
     ]
     # Keywords that indicate analysis/review tasks — NOT agent tasks
     analysis_keywords = [
@@ -1046,17 +1054,36 @@ def send_message(chat_id):
     if ssh_from_msg:
         is_agent_task = True
 
+    # Browser task keywords — tasks that need browser tools but NOT SSH
+    browser_keywords = [
+        "зайди на сайт", "зайди на", "открой сайт", "открой страниц",
+        "перейди на", "посети сайт", "проверь сайт", "проверь страниц",
+        "протестируй сайт", "протестируй интерфейс", "протестируй веб",
+        "browse", "visit", "navigate to", "open site", "open url",
+        "что на сайте", "что там написано", "что показывает сайт",
+        "скриншот сайта", "скриншот страниц",
+        "проверь ссылк", "проверь url", "проверь адрес",
+        "посмотри сайт", "посмотри страниц", "посмотри на",
+        "загрузи сайт", "загрузи страниц",
+        "найди на сайте", "найди на страниц",
+        "тестируй", "тестирование", "тест сайт", "тест интерфейс",
+        "веб-интерфейс", "web interface", "web page", "webpage",
+    ]
+    # Any message with a URL is a browser task (regardless of keywords)
+    has_url = "http://" in user_message or "https://" in user_message
+    is_browser_task = any(kw in msg_lower for kw in browser_keywords) or has_url
     # If file task detected — force agent mode for file generation
     # This works regardless of SSH — generate_file/generate_image don't need SSH
     if is_file_task and not is_agent_task:
         is_agent_task = True
-
+    # Browser tasks ALWAYS use agent mode (all 3 models)
+    if is_browser_task and not is_agent_task:
+        is_agent_task = True
     # Also check if SSH credentials are configured
     has_ssh = bool(ssh_credentials.get("host") and ssh_credentials.get("password"))
-
-    # Lite Agent Mode: file/image generation when NO SSH configured
-    # If SSH IS configured, file tasks run in full Agent Mode (which also has generate_file)
-    is_lite_agent = is_file_task and not has_ssh and not (is_agent_task and has_ssh)
+    # Lite Agent Mode: file/image/browser tasks when NO SSH configured
+    # If SSH IS configured, these tasks run in full Agent Mode
+    is_lite_agent = (is_file_task or is_browser_task) and not has_ssh and not (is_agent_task and has_ssh)
 
     # Build chat history for context
     history = [{"role": m["role"], "content": m["content"]} for m in chat["messages"][-10:]]
@@ -1070,7 +1097,8 @@ def send_message(chat_id):
 
         if is_lite_agent:
             # ═══ LITE AGENT MODE: File/Image generation without SSH ═══
-            yield f"data: {json.dumps({'type': 'agent_mode', 'text': 'Генерирую файл...'})}\n\n"
+            _lite_mode_text = 'Открываю браузер...' if is_browser_task else 'Генерирую файл...'
+            yield f"data: {json.dumps({'type': 'agent_mode', 'text': _lite_mode_text})}\n\n"
 
             agent = AgentLoop(
                 model=agent_model,

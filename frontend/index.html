@@ -196,7 +196,7 @@
                 <span class="chat-meta-sep">·</span>
                 <span class="chat-meta-item">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                  <span id="chatCostDisplay" style="color:var(--accent-green);font-weight:500">$0.0000</span>
+                  <span id="chatCostDisplay" style="color:var(--accent-green);font-weight:500">₽0.00</span>
                 </span>
                 <span class="chat-meta-sep">·</span>
                 <span class="chat-meta-item" id="chatMsgCount">0 сообщений</span>
@@ -391,9 +391,17 @@
               </div>
             </div>
             <div class="ac-pane" id="ac-browser">
-              <div class="ac-placeholder">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                <p>Браузер агента появится здесь</p>
+              <div class="ac-browser-bar" id="acBrowserBar" style="display:none">
+                <div class="ac-browser-dots"><span></span><span></span><span></span></div>
+                <div class="ac-browser-url" id="acBrowserUrl">about:blank</div>
+                <div class="ac-browser-status" id="acBrowserStatus"></div>
+              </div>
+              <div class="ac-browser-viewport" id="acBrowserViewport">
+                <div class="ac-placeholder" id="acBrowserPlaceholder">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                  <p>Браузер агента появится здесь</p>
+                </div>
+                <img id="acBrowserScreenshot" src="" alt="Browser screenshot" style="display:none;width:100%;height:100%;object-fit:contain;border-radius:4px;" />
               </div>
             </div>
             <div class="ac-pane" id="ac-files">
@@ -704,6 +712,7 @@
 <!-- ═══════════════════════════ TOAST ═══════════════════════════ -->
 <div class="toast-container" id="toastContainer"></div>
 
-<script src="app.js?v=20260316m"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="app.js?v=20260316n"></script>
 </body>
 </html>

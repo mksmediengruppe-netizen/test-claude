@@ -434,7 +434,7 @@ function loadChat(chatId) {
   } else {
     titleEl.title = '';
   }
-  document.getElementById('chatCostDisplay').textContent = '$' + STATE.chatCost.toFixed(4);
+  document.getElementById('chatCostDisplay').textContent = '₽' + (STATE.chatCost * CONFIG.USD_TO_RUB).toFixed(2);
   const tokensValEl = document.getElementById('totalTokensVal');
   if (tokensValEl) tokensValEl.textContent = STATE.totalTokens.toLocaleString();
   const msgCountEl = document.getElementById('chatMsgCount');
@@ -653,7 +653,7 @@ function renderMessage(role, content, cost = 0, tokens = 0, animate = true) {
       <div class="message-content" id="content_${msgId}">${formattedContent}</div>
       <div class="message-meta">
         <span>${time}</span>
-        ${cost > 0 ? `<span style="color:var(--accent-green);">$${cost.toFixed(6)}</span>` : ''}
+        ${cost > 0 ? `<span style="color:var(--accent-green);">₽${(cost * CONFIG.USD_TO_RUB).toFixed(2)}</span>` : ''}
         ${tokens > 0 ? `<span>${tokens} токенов</span>` : ''}
       </div>
       ${!isUser ? `
@@ -705,6 +705,28 @@ function getArtifactInfo(lang, code) {
   return null;
 }
 
+function convertRawMarkdownLinks(html) {
+  // Convert raw markdown links [text](url) that weren't parsed by marked.js
+  // Specifically handle /api/files/xxx/download links as download cards
+  html = html.replace(
+    /\[([^\]]*?)\]\((\/api\/files\/[^)]+\/download)\)/g,
+    function(match, text, url) {
+      var cleanText = text.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{2B55}\u{FE00}-\u{FE0F}\u{200D}]/gu, '').trim();
+      return '<a href="' + url + '" class="file-download-card" download>' +
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+        '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
+        '<polyline points="7 10 12 15 17 10"/>' +
+        '<line x1="12" y1="15" x2="12" y2="3"/></svg> ' + cleanText + '</a>';
+    }
+  );
+  // Also convert other markdown links [text](url) to clickable links
+  html = html.replace(
+    /\[([^\]]*?)\]\((https?:\/\/[^)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener">$1</a>'
+  );
+  return html;
+}
+
 function renderMarkdown(text) {
   if (typeof marked === 'undefined') return escapeHtml(text).replace(/\n/g, '<br>');
   try {
@@ -722,9 +744,25 @@ function renderMarkdown(text) {
     let html = marked.parse(text);
     // Wrap pre blocks
     html = html.replace(/<pre><code/g, '<pre><code');
+    // Convert /api/files/xxx/download links into styled download cards (HTML <a> tags)
+    html = html.replace(
+      /<a href="(\/api\/files\/[^"]+\/download)"[^>]*>([\s\S]*?)<\/a>/g,
+      function(match, url, text) {
+        var cleanText = text.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{2B55}\u{FE00}-\u{FE0F}\u{200D}]/gu, '').trim();
+        return '<a href="' + url + '" class="file-download-card" download>' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+          '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
+          '<polyline points="7 10 12 15 17 10"/>' +
+          '<line x1="12" y1="15" x2="12" y2="3"/></svg> ' + cleanText + '</a>';
+      }
+    );
+    // Also convert raw markdown links [text](/api/files/xxx/download) that marked.js missed
+    html = convertRawMarkdownLinks(html);
     return html;
   } catch(e) {
-    return escapeHtml(text).replace(/\n/g, '<br>');
+    var fallback = escapeHtml(text).replace(/\n/g, '<br>');
+    fallback = convertRawMarkdownLinks(fallback);
+    return fallback;
   }
 }
 
@@ -818,7 +856,7 @@ function finalizeStreamingMessage(msgId, fullText, cost, tokens) {
     const costRub = cost > 0 ? (cost * CONFIG.USD_TO_RUB).toFixed(2) : null;
     metaEl.innerHTML = `
       <span>${time}</span>
-      ${cost > 0 ? `<span style="color:var(--accent-green);">$${cost.toFixed(6)} (₽${costRub})</span>` : ''}
+      ${cost > 0 ? `<span style="color:var(--accent-green);">₽${costRub}</span>` : ''}
       ${tokens > 0 ? `<span>${tokens} токенов</span>` : ''}
     `;
   }
@@ -868,6 +906,10 @@ async function sendMessage() {
   chat.messages.push({ role: 'user', content: text });
   renderMessage('user', text);
   saveChats();
+
+  // Force scroll to bottom so user sees their message
+  scrollToBottom();
+  setTimeout(scrollToBottom, 50);
 
   // Update chat title if first message
   if (chat.messages.length === 1) {
@@ -1059,6 +1101,10 @@ async function callAPI(userMessage, chat) {
               addTaskStep(ok, `${parsed.tool || 'Результат'}${elapsed}: ${out || 'выполнено'}`);
               addThinkingStep(streamMsgId, ok, `${parsed.tool || 'Результат'}${elapsed}`);
               if (out) addTerminalLine(out, parsed.success !== false ? 'output' : 'error');
+              // Show browser screenshot if available
+              if (parsed.screenshot) {
+                updateAgentBrowserScreenshot(parsed.screenshot, parsed.tool, parsed.args);
+              }
             } else if (type === 'self_heal') {
               const msg = `Авто-исправление #${parsed.attempt}: ${parsed.fix_description || ''}`;
               addTaskStep('🔄', msg);
@@ -1149,7 +1195,7 @@ async function callAPI(userMessage, chat) {
 
   // Update UI
   const taskCostEl = document.getElementById('chatCostDisplay');
-  if (taskCostEl) taskCostEl.textContent = '$' + STATE.chatCost.toFixed(4);
+  if (taskCostEl) taskCostEl.textContent = '₽' + (STATE.chatCost * CONFIG.USD_TO_RUB).toFixed(2);
   const tokensEl = document.getElementById('totalTokensVal');
   if (tokensEl) tokensEl.textContent = STATE.totalTokens.toLocaleString();
 
@@ -1703,8 +1749,12 @@ function startVoiceInput() {
 // ── Scroll ─────────────────────────────────────────────────────
 function scrollToBottom() {
   const messages = document.getElementById('messages');
-  messages.scrollTop = messages.scrollHeight;
-  document.getElementById('scrollBottomBtn').classList.add('hidden');
+  if (!messages) return;
+  // Use requestAnimationFrame for reliable scroll after DOM update
+  requestAnimationFrame(() => {
+    messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
+    document.getElementById('scrollBottomBtn')?.classList.add('hidden');
+  });
 }
 
 function setupScrollDetection() {
@@ -1747,7 +1797,7 @@ function clearChat() {if (!confirm('Очистить историю этого �
   STATE.chatCost = 0;
   STATE.taskCost = 0;
   STATE.totalTokens = 0;
-  document.getElementById('chatCostDisplay').textContent = '$0.0000';
+  document.getElementById('chatCostDisplay').textContent = '₽0.00';
   const clearTokEl = document.getElementById('totalTokensVal');
   if (clearTokEl) clearTokEl.textContent = '0';
   document.getElementById('messages').querySelectorAll('.message').forEach(m => m.remove());
@@ -2860,6 +2910,48 @@ function switchACPane(pane, btn) {
   const paneEl = document.getElementById('ac-' + pane);
   if (paneEl) paneEl.classList.add('active');
   if (btn) btn.classList.add('active');
+}
+
+// Update the live browser screenshot in the agent computer panel
+function updateAgentBrowserScreenshot(screenshotB64, toolName, args) {
+  const img = document.getElementById('acBrowserScreenshot');
+  const placeholder = document.getElementById('acBrowserPlaceholder');
+  const bar = document.getElementById('acBrowserBar');
+  const urlEl = document.getElementById('acBrowserUrl');
+  const statusEl = document.getElementById('acBrowserStatus');
+  if (!img) return;
+
+  // Show the browser bar with URL info
+  if (bar) bar.style.display = 'flex';
+
+  // Extract URL from args if available
+  const url = (args && (args.url || args.host)) || '';
+  if (urlEl && url) urlEl.textContent = url;
+
+  // Show tool name as status
+  const toolLabels = {
+    'browser_navigate': '🌐 Навигация',
+    'browser_check_site': '🔍 Проверка',
+    'browser_get_text': '📝 Чтение',
+    'browser_get_links': '🔗 Ссылки',
+    'browser_screenshot_check': '📸 Скриншот'
+  };
+  if (statusEl) statusEl.textContent = toolLabels[toolName] || toolName;
+
+  // Display the screenshot
+  img.src = 'data:image/png;base64,' + screenshotB64;
+  img.style.display = 'block';
+  if (placeholder) placeholder.style.display = 'none';
+
+  // Auto-open agent computer panel if not visible
+  const panel = document.getElementById('agentComputer');
+  if (panel && panel.classList.contains('hidden')) {
+    panel.classList.remove('hidden');
+    STATE.agentComputerVisible = true;
+  }
+  // Auto-switch to browser tab in agent computer panel
+  const browserTab = document.querySelector('.ac-tab[data-pane="browser"]');
+  if (browserTab) switchACPane('browser', browserTab);
 }
 function toggleACFullscreen() {
   const panel = document.getElementById('agentComputer');

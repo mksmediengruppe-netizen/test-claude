@@ -1,7 +1,7 @@
 """
 Browser Agent Module — Навигация по сайтам, парсинг, проверка доступности.
 Использует requests + BeautifulSoup для headless browsing.
-Может проверять работоспособность сайтов, получать контент, парсить HTML.
+Playwright используется для реальных скриншотов браузера.
 """
 
 import requests
@@ -9,6 +9,41 @@ from urllib.parse import urljoin, urlparse
 import re
 import json
 import time
+import base64
+import threading
+
+
+# ── Playwright screenshot support ──────────────────────────────────────────
+_playwright_available = False
+try:
+    from playwright.sync_api import sync_playwright
+    _playwright_available = True
+except ImportError:
+    pass
+
+_pw_lock = threading.Lock()
+
+
+def _take_playwright_screenshot(url: str, width: int = 1280, height: int = 800) -> str | None:
+    """Take a real browser screenshot using Playwright. Returns base64 PNG or None."""
+    if not _playwright_available:
+        return None
+    try:
+        with _pw_lock:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+                )
+                page = browser.new_page(viewport={"width": width, "height": height})
+                page.goto(url, timeout=20000, wait_until="domcontentloaded")
+                # Wait a bit for JS to render
+                page.wait_for_timeout(1500)
+                png_bytes = page.screenshot(full_page=False)
+                browser.close()
+                return base64.b64encode(png_bytes).decode("utf-8")
+    except Exception as e:
+        return None
 
 
 class BrowserAgent:
@@ -23,15 +58,21 @@ class BrowserAgent:
             "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
         })
         self.history = []
+        self._last_screenshot_b64 = None  # Cached last screenshot
 
     def navigate(self, url):
-        """Navigate to a URL and return page content."""
+        """Navigate to a URL and return page content + screenshot."""
         try:
             if not url.startswith(("http://", "https://")):
                 url = "https://" + url
 
             resp = self.session.get(url, timeout=self.timeout, allow_redirects=True, verify=False)
             self.history.append({"url": url, "status": resp.status_code, "time": time.time()})
+
+            # Take real screenshot with Playwright
+            screenshot_b64 = _take_playwright_screenshot(resp.url)
+            if screenshot_b64:
+                self._last_screenshot_b64 = screenshot_b64
 
             return {
                 "success": True,
@@ -40,7 +81,8 @@ class BrowserAgent:
                 "content_type": resp.headers.get("Content-Type", ""),
                 "html": resp.text[:100000],  # Limit to 100KB
                 "headers": dict(resp.headers),
-                "elapsed_ms": int(resp.elapsed.total_seconds() * 1000)
+                "elapsed_ms": int(resp.elapsed.total_seconds() * 1000),
+                "screenshot": screenshot_b64  # base64 PNG or None
             }
         except Exception as e:
             return {
@@ -50,7 +92,7 @@ class BrowserAgent:
             }
 
     def check_site(self, url):
-        """Check if a website is accessible and return status info."""
+        """Check if a website is accessible and return status info + screenshot."""
         try:
             if not url.startswith(("http://", "https://")):
                 url = "https://" + url
@@ -65,6 +107,11 @@ class BrowserAgent:
             if title_match:
                 title = title_match.group(1).strip()
 
+            # Take real screenshot with Playwright
+            screenshot_b64 = _take_playwright_screenshot(resp.url)
+            if screenshot_b64:
+                self._last_screenshot_b64 = screenshot_b64
+
             return {
                 "success": True,
                 "url": resp.url,
@@ -74,6 +121,7 @@ class BrowserAgent:
                 "content_length": len(resp.text),
                 "is_https": resp.url.startswith("https://"),
                 "server": resp.headers.get("Server", "unknown"),
+                "screenshot": screenshot_b64  # base64 PNG or None
             }
         except Exception as e:
             return {
@@ -107,7 +155,8 @@ class BrowserAgent:
             "success": True,
             "url": result["url"],
             "text": text,
-            "status_code": result["status_code"]
+            "status_code": result["status_code"],
+            "screenshot": result.get("screenshot")  # pass through screenshot
         }
 
     def get_links(self, url):
@@ -132,7 +181,8 @@ class BrowserAgent:
             "success": True,
             "url": result["url"],
             "links": links[:200],  # Limit to 200 links
-            "count": len(links)
+            "count": len(links),
+            "screenshot": result.get("screenshot")
         }
 
     def post_data(self, url, data=None, json_data=None, headers=None):
@@ -213,7 +263,7 @@ class BrowserAgent:
             }
 
     def screenshot_check(self, url):
-        """Check visual aspects of a site (headers, meta, resources)."""
+        """Check visual aspects of a site (headers, meta, resources) + real screenshot."""
         result = self.navigate(url)
         if not result["success"]:
             return result
@@ -251,5 +301,6 @@ class BrowserAgent:
                 "images": images
             },
             "html_size": len(html),
-            "status_code": result["status_code"]
+            "status_code": result["status_code"],
+            "screenshot": result.get("screenshot")  # real Playwright screenshot
         }
