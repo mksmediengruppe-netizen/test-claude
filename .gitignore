@@ -1,0 +1,16 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+backend/uploads/
+backend/data/
+backend/database.db
+backend/generated/
+backend/terminal_full_output/
+*.bak*
+*.log
+.DS_Store
+backup_*/
+*.zip
+*.tar.gz
