@@ -862,6 +862,7 @@ function createStreamingMessage() {
         <div class="thinking-steps" id="${thinkId}_steps"></div>
       </div>
       <div class="message-content" id="content_${msgId}"></div>
+      <div class="message-files" id="files_${msgId}"></div>
       <div class="message-meta" id="meta_${msgId}"></div>
     </div>
   `;
@@ -897,6 +898,21 @@ function updateStreamingMessage(msgId, text) {
     contentEl.innerHTML = renderMarkdown(text);
     scrollToBottom();
   }
+}
+function addFileCard(msgId, filename, url, size) {
+  const filesEl = document.getElementById('files_' + msgId);
+  if (!filesEl) return;
+  const sizeStr = size > 0 ? ' (' + (size > 1048576 ? (size/1048576).toFixed(1)+'MB' : size > 1024 ? (size/1024).toFixed(0)+'KB' : size+'B') + ')' : '';
+  const ext = filename.split('.').pop().toLowerCase();
+  const iconMap = {docx:'📄',doc:'📄',pdf:'📕',xlsx:'📊',xls:'📊',zip:'🗜️',tar:'🗜️',gz:'🗜️',png:'🖼️',jpg:'🖼️',jpeg:'🖼️',gif:'🖼️',mp4:'🎬',mp3:'🎵',csv:'📊',json:'📋',md:'📝',txt:'📝',html:'🌐',py:'🐍',js:'📜'};
+  const icon = iconMap[ext] || '📎';
+  const card = document.createElement('a');
+  card.href = url;
+  card.className = 'file-download-card';
+  card.setAttribute('download', filename);
+  card.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> ' + icon + ' ' + filename + sizeStr;
+  filesEl.appendChild(card);
+  scrollToBottom();
 }
 
 function finalizeStreamingMessage(msgId, fullText, cost, tokens) {
@@ -1228,8 +1244,7 @@ async function callAPI(userMessage, chat) {
               addTaskStep('📄', `Файл: ${parsed.filename || ''}`);
               addThinkingStep(streamMsgId, '📄', `Файл: ${parsed.filename || ''}`);
               if (parsed.url) {
-                fullText += `\n\n[📎 ${parsed.filename}](${backendUrl}${parsed.url})`;
-                updateStreamingMessage(streamMsgId, fullText);
+                addFileCard(streamMsgId, parsed.filename || 'file', backendUrl + parsed.url, parsed.size || 0);
               }
             } else if (type === 'self_check') {
               if (parsed.status === 'started') {

@@ -2172,6 +2172,18 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
                     _tool_result_event["screenshot"] = _screenshot
                 yield self._sse(_tool_result_event)
 
+                # File download event
+                _ftools = ("generate_file","generate_image","generate_chart","generate_report","edit_image","generate_design","create_artifact","code_interpreter")
+                if tool_name in _ftools and result.get("success", False):
+                    _dl = result.get("download_url") or result.get("preview_url")
+                    _fn = result.get("filename") or result.get("output_filename", "")
+                    _sz = result.get("size", 0)
+                    if tool_name == "code_interpreter" and result.get("generated_files"):
+                        for _gf in result["generated_files"]:
+                            yield self._sse({"type": "file", "filename": _gf.get("filename",""), "url": _gf.get("download_url",""), "size": _gf.get("size",0)})
+                    elif _dl and _fn:
+                        yield self._sse({"type": "file", "filename": _fn, "url": _dl, "size": _sz})
+
                 # ── Self-Healing 2.0 ──
                 if not result.get("success", False) and heal_attempts < self.MAX_HEAL_ATTEMPTS:
                     fixes = self._analyze_error(tool_name, tool_args, result)

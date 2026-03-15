@@ -981,6 +981,11 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   text-decoration: none;
 }
 .file-download-card svg { flex-shrink: 0; }
+.message-files {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-top: 8px;
+}
+.message-files:empty { display: none; }
 
 /* ════════════════════════════════════════════════════════════
    AGENT COMPUTER PANEL
