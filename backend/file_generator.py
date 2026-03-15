@@ -327,9 +327,35 @@ def generate_pdf_file(content, filename="document.pdf", title=None, chat_id=None
             bullet = '- ' if font_name == 'Helvetica' else '\u2022 '
             pdf.cell(10)
             pdf.multi_cell(0, 6, safe_text(f"{bullet}{stripped[2:]}"))
+        elif stripped.startswith('|') and stripped.endswith('|'):
+            # Markdown table row — render as simple text with columns
+            # Skip separator rows like |---|---|
+            if re.match(r'^[|\-:\s]+$', stripped):
+                pass  # separator row, skip
+            else:
+                cols = [c.strip() for c in stripped.strip('|').split('|')]
+                page_width = pdf.w - pdf.l_margin - pdf.r_margin
+                if len(cols) > 0:
+                    col_w = min(page_width / len(cols), page_width)
+                    # Ensure minimum col width
+                    if col_w < 10:
+                        col_w = 10
+                    # Render row
+                    row_text = '  |  '.join(safe_text(c) for c in cols)
+                    try:
+                        pdf.multi_cell(0, 6, row_text)
+                    except Exception:
+                        # Fallback: just print truncated
+                        pdf.multi_cell(0, 6, safe_text(stripped[:80]))
         else:
-            clean = stripped.replace('**', '')
-            pdf.multi_cell(0, 6, safe_text(clean))
+            clean = stripped.replace('**', '').replace('__', '')
+            # Handle very long lines that might cause issues
+            if len(clean) > 200:
+                clean = clean[:200] + '...'
+            try:
+                pdf.multi_cell(0, 6, safe_text(clean))
+            except Exception:
+                pass  # Skip problematic lines
 
     pdf.output(filepath)
     size = os.path.getsize(filepath)

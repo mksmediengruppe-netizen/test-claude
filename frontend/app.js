@@ -1000,8 +1000,9 @@ async function sendMessage() {
   saveChats();
 
   // Force scroll to bottom so user sees their message
-  scrollToBottom();
-  setTimeout(scrollToBottom, 50);
+  _userScrolledUp = false; // user sent message — reset scroll flag
+  scrollToBottom(true); // force instant scroll
+  setTimeout(function() { scrollToBottom(true); }, 100);
 
   // Update chat title if first message
   if (chat.messages.length === 1) {
@@ -2019,21 +2020,38 @@ function startVoiceInput() {
 }
 
 // ── Scroll ─────────────────────────────────────────────────────
-function scrollToBottom() {
+// Auto-scroll: track if user manually scrolled up
+let _userScrolledUp = false;
+
+function scrollToBottom(force) {
   const messages = document.getElementById('messages');
   if (!messages) return;
-  // Use requestAnimationFrame for reliable scroll after DOM update
-  requestAnimationFrame(() => {
+  // If user scrolled up and this is not a forced scroll — don't interrupt
+  if (_userScrolledUp && !force) return;
+  requestAnimationFrame(function() {
+    messages.scrollTop = messages.scrollHeight; // instant scroll, no animation lag
+    const btn = document.getElementById('scrollBottomBtn');
+    if (btn) btn.classList.add('hidden');
+  });
+}
+
+function scrollToBottomSmooth() {
+  const messages = document.getElementById('messages');
+  if (!messages) return;
+  requestAnimationFrame(function() {
     messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
-    document.getElementById('scrollBottomBtn')?.classList.add('hidden');
+    const btn = document.getElementById('scrollBottomBtn');
+    if (btn) btn.classList.add('hidden');
   });
 }
 
 function setupScrollDetection() {
   const messages = document.getElementById('messages');
-  messages.addEventListener('scroll', () => {
-    const isAtBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 100;
+  messages.addEventListener('scroll', function() {
+    const isAtBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 150;
     document.getElementById('scrollBottomBtn').classList.toggle('hidden', isAtBottom);
+    // Track manual scroll: if user scrolled up, pause auto-scroll
+    _userScrolledUp = !isAtBottom;
   });
 }
 // ── Auth Actions ───────────────────────────────────────────────────
