@@ -569,9 +569,9 @@ a{color:var(--accent)}
 }
 .drop-zone.visible{display:flex}
 .attached-file{
-  display:none;flex-wrap:wrap;gap:6px;margin-bottom:8px;
+  display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;
 }
-.attached-file.visible{display:flex}
+.attached-file.hidden{display:none!important}
 .attached-file-chip{
   display:flex;align-items:center;gap:5px;
   background:var(--accent-light);border:1px solid var(--accent-mid);
@@ -1341,7 +1341,7 @@ a{color:var(--accent)}
         <!-- Messages column -->
         <div class="msgs-col">
           <div class="msgs-wrap" id="msgsWrap" style="position:relative">
-            <div class="msgs-inner" id="msgs">
+            <div class="msgs-inner" id="messages">
               <!-- Welcome screen -->
               <div class="welcome" id="welcomeScreenReal">
                 <div class="welcome-icon">⚡</div>
@@ -1394,7 +1394,7 @@ a{color:var(--accent)}
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               📎 Отпустите для прикрепления
             </div>
-            <div class="attached-file" id="attachedFile"></div>
+            <div class="attached-file hidden" id="attachedFile"></div>
             <div class="input-box" id="inputBox">
               <div class="input-row">
                 <button class="ibtn" title="Прикрепить файл" onclick="triggerFileUpload()">
@@ -1746,7 +1746,7 @@ a{color:var(--accent)}
 <div class="ctx-menu hidden" id="ctxMenu"><!-- populated by JS --></div>
 
 <!-- Hidden aliases for app.js compatibility -->
-<div id="messages" style="display:none"></div>
+<!-- messages alias removed - msgs renamed to messages -->
 <div id="welcomeScreen" style="display:none"></div>
 <div id="chatContextMenu" class="ctx-menu hidden"></div>
 <div id="chatCtxMenu" class="ctx-menu hidden"></div>
@@ -2375,25 +2375,21 @@ function showWelcomeScreen() {
 }
 window.showWelcomeScreen = showWelcomeScreen;
 
-// Proxy: app.js uses getElementById('messages') to append message divs and scroll
-// We create a proxy object that wraps msgsWrap (for scroll) but appends to msgs (for layout)
+// Proxy: getElementById override for compatibility aliases
+// messages is now a real element (id="messages"), scroll delegated to msgsWrap
 (function() {
   const origGetById = document.getElementById.bind(document);
   document.getElementById = function(id) {
     if (id === 'messages') {
       const wrap = origGetById('msgsWrap');
-      const inner = origGetById('msgs');
-      if (!wrap || !inner) return inner || origGetById('messages');
-      // Return a Proxy that delegates scroll to wrap, DOM mutations to inner
+      const inner = origGetById('messages');
+      if (!wrap || !inner) return inner;
+      // Return a Proxy that delegates scroll ops to msgsWrap, everything else to messages
       return new Proxy(inner, {
         get(target, prop) {
-          if (prop === 'scrollTo' || prop === 'scrollTop' || prop === 'scrollHeight' || prop === 'clientHeight') {
-            if (prop === 'scrollTo') return wrap.scrollTo.bind(wrap);
-            return wrap[prop];
-          }
-          if (prop === 'addEventListener' || prop === 'removeEventListener') {
-            return wrap[prop].bind(wrap);
-          }
+          if (prop === 'scrollTo') return wrap.scrollTo.bind(wrap);
+          if (prop === 'scrollTop' || prop === 'scrollHeight' || prop === 'clientHeight') return wrap[prop];
+          if (prop === 'addEventListener' || prop === 'removeEventListener') return wrap[prop].bind(wrap);
           const val = target[prop];
           return typeof val === 'function' ? val.bind(target) : val;
         },
@@ -2410,7 +2406,6 @@ window.showWelcomeScreen = showWelcomeScreen;
     if (id === 'chatWorkspace') {
       return origGetById('chatBodyWrap') || origGetById('chatWorkspace');
     }
-    // agentX aliases - find by data-alias attribute
     if (id === 'agentTerminal' || id === 'agentBrowser' || id === 'agentFiles' || id === 'agentSteps') {
       return document.querySelector(`[data-alias="${id}"]`) || origGetById(id);
     }
@@ -2429,7 +2424,7 @@ function clearChat() {
   if (typeof clearCurrentChat === 'function') {
     clearCurrentChat();
   } else {
-    document.getElementById('msgs').innerHTML = '';
+    document.getElementById('messages').innerHTML = '';
     showWelcomeScreen();
     showToast('🗑️ Чат очищен', 'info');
   }
@@ -2440,7 +2435,7 @@ function newChat() {
   if (typeof createNewChat === 'function') {
     createNewChat();
   } else {
-    document.getElementById('msgs').innerHTML = '';
+    document.getElementById('messages').innerHTML = '';
     showWelcomeScreen();
     setChatTitleUI('Super Agent v6.0');
     updateTopbarMeta('0 сек', '0.00', 0);
@@ -2458,7 +2453,7 @@ function sendMessage() {
     input.value = '';
     input.style.height = 'auto';
     document.getElementById('attachedFile').innerHTML = '';
-    document.getElementById('attachedFile').classList.remove('visible');
+    document.getElementById('attachedFile').classList.add('hidden');
   } else {
     showToast('⚠️ Модуль app.js не загружен', 'err');
   }
@@ -2578,6 +2573,6 @@ function renderCommandsUI(commands) {
 }
 window.renderCommandsUI = renderCommandsUI;
 </script>
-<script src="/static/app.js"></script>
+<script src="/app.js"></script>
 </body>
 </html>
