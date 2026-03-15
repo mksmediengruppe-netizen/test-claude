@@ -1846,6 +1846,18 @@ def send_message(chat_id):
 
         db_write(db2)
 
+        # Offer to save as document if response is long enough (Manus-style)
+        if full_response and len(full_response) > 500:
+            import re as _re
+            title_match = _re.search(r'^#+\s+(.+)$', full_response, _re.MULTILINE)
+            if title_match:
+                raw_title = title_match.group(1).strip()
+            else:
+                words = full_response.split()[:6]
+                raw_title = " ".join(words)
+            safe_title = _re.sub(r'[^\w\s\-]', '', raw_title)[:50].strip()
+            safe_title = _re.sub(r'\s+', '_', safe_title) or "document"
+            yield f"data: {json.dumps({'type': 'save_offer', 'title': safe_title, 'length': len(full_response)})}\n\n"
         # Send completion event with routing info
         yield f"data: {json.dumps({'type': 'done', 'tokens_in': tokens_in, 'tokens_out': tokens_out, 'cost': total_cost, 'model': routed_model_name, 'tier': routed_tier, 'complexity': routed_complexity})}\n\n"
 
@@ -2501,6 +2513,40 @@ def list_files_endpoint():
     limit = int(request.args.get("limit", 50))
     files = list_generated_files(chat_id=chat_id, user_id=request.user_id, limit=limit)
     return jsonify({"files": files, "total": len(files)})
+
+
+@app.route("/api/save-as-document", methods=["POST"])
+@require_auth
+def save_as_document():
+    """Save agent response text as a document file (.md, .docx, .pdf)."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    content = data.get("content", "")
+    filename_base = data.get("filename", "document")
+    fmt = data.get("format", "md").lower().strip(".")
+
+    if not content:
+        return jsonify({"error": "content is required"}), 400
+
+    if fmt not in ("md", "docx", "pdf"):
+        return jsonify({"error": f"Unsupported format: {fmt}"}), 400
+
+    # Clean filename
+    import re as _re
+    safe_base = _re.sub(r"[^\w\-]", "_", filename_base)[:60] or "document"
+    filename = f"{safe_base}.{fmt}"
+
+    # Use existing generate_file function
+    result = generate_file(
+        content=content,
+        filename=filename,
+        title=filename_base.replace("_", " "),
+        chat_id=data.get("chat_id"),
+        user_id=request.user_id
+    )
+    return jsonify(result)
 
 
 @app.route("/api/files/generate", methods=["POST"])

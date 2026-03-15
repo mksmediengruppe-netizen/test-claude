@@ -915,6 +915,80 @@ function addFileCard(msgId, filename, url, size) {
   scrollToBottom();
 }
 
+function addSaveOfferCard(msgId, title, fullText) {
+  const filesEl = document.getElementById('files_' + msgId);
+  if (!filesEl) return;
+  // Don't add duplicate
+  if (filesEl.querySelector('.save-offer-card')) return;
+
+  const card = document.createElement('div');
+  card.className = 'save-offer-card';
+  card.innerHTML = `
+    <div class="save-offer-label">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      Сохранить как документ
+    </div>
+    <div class="save-offer-buttons">
+      <button class="save-offer-btn" data-fmt="md" title="Markdown">📝 .md</button>
+      <button class="save-offer-btn" data-fmt="docx" title="Word документ">📄 .docx</button>
+      <button class="save-offer-btn" data-fmt="pdf" title="PDF документ">📕 .pdf</button>
+    </div>
+  `;
+
+  // Store fullText on the card element
+  card._fullText = fullText;
+  card._title = title;
+
+  card.querySelectorAll('.save-offer-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const fmt = btn.dataset.fmt;
+      const btnText = btn.innerHTML;
+      btn.innerHTML = '⏳';
+      btn.disabled = true;
+
+      try {
+        const resp = await fetch(backendUrl + '/api/save-as-document', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + (STATE.token || '')
+          },
+          body: JSON.stringify({
+            content: card._fullText,
+            filename: card._title,
+            format: fmt
+          })
+        });
+        const data = await resp.json();
+        if (data.url) {
+          // Replace buttons with download link
+          const dl = document.createElement('a');
+          dl.href = backendUrl + data.url;
+          dl.className = 'file-download-card';
+          dl.setAttribute('download', data.filename || card._title + '.' + fmt);
+          const iconMap = {md:'📝', docx:'📄', pdf:'📕'};
+          const sizeStr = data.size > 0 ? ' (' + (data.size > 1024 ? (data.size/1024).toFixed(0)+'KB' : data.size+'B') + ')' : '';
+          dl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> ' + (iconMap[fmt]||'📎') + ' ' + (data.filename || card._title + '.' + fmt) + sizeStr;
+          card.replaceWith(dl);
+          scrollToBottom();
+        } else {
+          btn.innerHTML = btnText;
+          btn.disabled = false;
+          alert('Ошибка: ' + (data.error || 'Не удалось сохранить'));
+        }
+      } catch(err) {
+        btn.innerHTML = btnText;
+        btn.disabled = false;
+        alert('Ошибка сохранения: ' + err.message);
+      }
+    });
+  });
+
+  filesEl.appendChild(card);
+  scrollToBottom();
+}
+
 function finalizeStreamingMessage(msgId, fullText, cost, tokens) {
   const contentEl = document.getElementById('content_' + msgId);
   if (contentEl) {
@@ -1078,6 +1152,7 @@ async function callAPI(userMessage, chat) {
   const streamMsgId = createStreamingMessage();
   let fullText = '';
   let inputTokens = 0;
+  let _saveOfferTitle = null;
   let outputTokens = 0;
   let backendCost = null;  // Will be set from backend 'done' event
 
@@ -1272,6 +1347,9 @@ async function callAPI(userMessage, chat) {
               addTaskStep('❌', errMsg);
               addThinkingStep(streamMsgId, '❌', errMsg);
               addTerminalLine(errMsg, 'error');
+            } else if (type === 'save_offer') {
+              _saveOfferTitle = parsed.title || 'document';
+              addThinkingStep(streamMsgId, '💾', 'Готов сохранить как документ');
             } else if (type === 'done') {
               inputTokens = parsed.tokens_in || 0;
               outputTokens = parsed.tokens_out || 0;
@@ -1346,6 +1424,10 @@ async function callAPI(userMessage, chat) {
 
   // Finalize message
   finalizeStreamingMessage(streamMsgId, fullText, cost, totalTokens);
+  // Show "Save as document" offer if response was long (Manus-style)
+  if (_saveOfferTitle && fullText && fullText.length > 500) {
+    addSaveOfferCard(streamMsgId, _saveOfferTitle, fullText);
+  }
 
   // Save to chat history
   chat.messages.push({ role: 'assistant', content: fullText, cost, tokens: totalTokens });
