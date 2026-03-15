@@ -52,8 +52,8 @@ app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-DATA_DIR = os.environ.get("DATA_DIR", "/var/www/super-agent/backend/data")
-UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/var/www/super-agent/backend/uploads")
+DATA_DIR = os.environ.get("DATA_DIR", "/var/www/claude/backend/data_dev")
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/var/www/claude/backend/uploads")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(GENERATED_DIR, exist_ok=True)
@@ -131,6 +131,72 @@ CHAT_MODELS = {
     "deepseek": {"model": "deepseek/deepseek-v3.2", "name": "DeepSeek V3.2", "lang": "RU ⭐⭐⭐⭐⭐", "input_price": 0.26, "output_price": 0.38},
     "gpt5nano": {"model": "openai/gpt-4.1-nano", "name": "GPT-5 Nano", "lang": "RU ⭐⭐⭐⭐", "input_price": 0.05, "output_price": 0.40},
 }
+
+# ── Dev Mode Models (Admin Only) ─────────────────────────────
+DEV_MODELS = {
+    "claude-opus": {
+        "model": "anthropic/claude-opus-4",
+        "name": "Claude Opus 4",
+        "description": "Самый мощный. Сложные архитектурные задачи.",
+        "input_price": 15.00,
+        "output_price": 75.00,
+        "power": 5
+    },
+    "claude-sonnet": {
+        "model": "anthropic/claude-sonnet-4",
+        "name": "Claude Sonnet 4.5",
+        "description": "Лучший баланс мощи и скорости для кода.",
+        "input_price": 3.00,
+        "output_price": 15.00,
+        "power": 4
+    },
+    "deepseek-v3": {
+        "model": "deepseek/deepseek-v3.2",
+        "name": "DeepSeek V3.2",
+        "description": "Быстрый и дешёвый, отличный для SSH и кода.",
+        "input_price": 0.26,
+        "output_price": 0.38,
+        "power": 4
+    }
+}
+
+DEV_MODE_SYSTEM_PROMPT = """Ты — автономный AI-агент уровня Senior Full-Stack Developer и DevOps инженер.
+Ты работаешь напрямую с администратором. Он пишет простым языком — ты должен понимать его с полуслова.
+
+## Твои возможности
+- SSH: подключаться к серверам, выполнять любые команды, редактировать файлы, управлять сервисами
+- Браузер: открывать сайты, проверять работоспособность, смотреть тарифы, заходить в панели управления
+- Код: писать, редактировать, деплоить на любом языке
+- Файлы: создавать, редактировать, скачивать, архивировать файлы
+- Docker, nginx, systemd, git, базы данных, API
+
+## Как понимать пользователя
+Пользователь пишет как человек, не как программист. Примеры:
+- "посмотри что там на сервере" → подключись по SSH, покажи ls, df, top
+- "поправь nginx" → посмотри конфиг, найди ошибку, исправь, перезапусти
+- "перезапусти всё" → перезапусти все сервисы (systemd, docker)
+- "скачай код и сделай архив" → scp/tar/zip и отдай файл
+- "сходи на бегет посмотри тарифы" → открой браузер, зайди на beget.com, найди VPS тарифы
+- "залей этот файл на сервер" → возьми загруженный файл и передай через SSH
+- "покажи логи" → cat/tail логов на сервере
+- "что за папки там" → ls -la на сервере
+- "сделай бэкап" → создай архив важных файлов
+- "напиши скрипт" → напиши код и сохрани в файл
+
+## Правила работы
+1. ДЕЙСТВУЙ, не спрашивай. Если что-то неясно — сделай разумное предположение и выполни.
+2. Показывай что делаешь: какие команды выполняешь, какие файлы меняешь, что нашёл.
+3. Разбивай сложные задачи на шаги. Выполняй последовательно.
+4. Отвечай кратко. Показывай результат, не пиши длинных объяснений.
+5. Если пользователь загрузил файл — работай с ним сразу.
+6. При ошибках — не сдавайся. Попробуй другой подход, почини сам.
+7. Работай на русском языке.
+
+## Важно
+- Ты не ассистент. Ты — инструмент с руками. Делай то, что просят.
+- Если нужно сделать несколько действий — делай все по очереди, не останавливайся.
+- Используй инструменты (ssh_command, browse_web, code_interpreter, create_file) для выполнения задач.
+- Никогда не говори "я не могу" — всегда пытайся сделать."""
 
 # ── File processing constants ─────────────────────────────────
 TEXT_EXTENSIONS = {
@@ -370,7 +436,7 @@ def get_me():
 def get_settings():
     """Get user settings and available configurations."""
     user = request.user
-    return jsonify({
+    result = {
         "settings": user.get("settings", {}),
         "model_configs": {
             k: {
@@ -387,7 +453,18 @@ def get_settings():
                 "lang": v["lang"]
             } for k, v in CHAT_MODELS.items()
         }
-    })
+    }
+    # Add dev models info for admin users
+    if user.get("role") == "admin":
+        result["dev_models"] = {
+            k: {
+                "name": v["name"],
+                "description": v["description"],
+                "power": v["power"]
+            } for k, v in DEV_MODELS.items()
+        }
+        result["is_admin"] = True
+    return jsonify(result)
 
 
 @app.route("/api/settings", methods=["PUT"])
@@ -399,7 +476,13 @@ def update_settings():
     user = db["users"].get(request.user_id, {})
 
     allowed_keys = {"variant", "chat_model", "enhanced_mode", "self_check_level", "design_pro", "language",
-                    "ssh_host", "ssh_user", "ssh_password", "github_token", "n8n_url", "n8n_api_key"}
+                    "ssh_host", "ssh_user", "ssh_password", "github_token", "n8n_url", "n8n_api_key",
+                    "dev_mode", "dev_model"}
+
+    # Dev Mode can only be toggled by admin
+    if "dev_mode" in data:
+        if request.user.get("role") != "admin":
+            return jsonify({"error": "Dev Mode is admin-only"}), 403
 
     settings = user.get("settings", {})
     for key in allowed_keys:
@@ -508,12 +591,17 @@ def list_chats():
     user_chats = []
     for chat_id, chat in db["chats"].items():
         if is_admin or chat.get("user_id") == request.user_id:
+            msg_count = len(chat.get("messages", []))
+            # BUG-ARCH-02 FIX: Skip empty chats (no messages) to prevent sidebar clutter.
+            # Empty chats are created by the old newChat() bug and should not be shown.
+            if msg_count == 0:
+                continue
             user_chats.append({
                 "id": chat_id,
                 "title": chat.get("title", "Новый чат"),
                 "created_at": chat.get("created_at", ""),
                 "updated_at": chat.get("updated_at", ""),
-                "message_count": len(chat.get("messages", [])),
+                "message_count": msg_count,
                 "total_cost": chat.get("total_cost", 0.0),
                 "model_used": chat.get("model_used", ""),
                 "variant": chat.get("variant", "premium"),
@@ -907,14 +995,23 @@ ORCHESTRATOR_PROMPT = """Ты — умный маршрутизатор зада
 - "chat" — обычный разговор, вопросы, объяснения, советы, идеи, написание кода, конфигов, скриптов, шаблонов
 - "file" — создание документов для скачивания: Word (.docx), PDF, Excel (.xlsx), PowerPoint (.pptx), CSV
 - "deploy" — реальные действия на серверах: SSH подключение, деплой, установка ПО, настройка сервисов, бэкапы
-- "research" — поиск актуальной информации в интернете, текущие цены/курсы/новости, парсинг сайтов
+- "research" — поиск актуальной информации в интернете, текущие цены/курсы/новости, парсинг сайтов, любые данные которые меняются со временем
 - "data" — анализ данных, математические расчёты, построение графиков и диаграмм из данных
 ПРАВИЛА ВЫБОРА РЕЖИМА (применяй по порядку, первое совпавшее правило побеждает):
 1. Если в сообщении есть IP-адрес (например 1.2.3.4) → "deploy"
 2. Если есть слово "сервер/VPS/прод/боевой/сервак/серваке" + действие → "deploy"
 3. Если запрос заканчивается созданием файла (Word/PDF/Excel/PowerPoint/таблицу/отчёт в файле) → "file", даже если в начале есть "найди/поищи/проверь/проанализируй"
 4. Если просят создать бизнес-документ для скачивания (договор, счёт, резюме, отчёт, презентация, инструкция, ТЗ, КП) → "file"
-5. Если просят найти АКТУАЛЬНУЮ информацию в интернете, проверить сайт, узнать ТЕКУЩИЕ цены/курсы → "research"
+5. Если запрос касается ЛЮБОЙ информации которая меняется со временем или требует актуальных данных из интернета → "research". Это включает:
+   - Курсы криптовалют: биткоин, ethereum, BTC, ETH, любые монеты
+   - Курсы валют: доллар, евро, рубль, юань, любые валюты
+   - Цены на товары, услуги, акции, нефть, золото
+   - Погода сейчас или прогноз
+   - Новости, события, что происходит
+   - Информация о компаниях, людях, организациях из интернета
+   - Расписания, время работы, адреса, контакты
+   - Рейтинги, отзывы, топ-листы
+   - Любые вопросы начинающиеся с "сколько сейчас", "какой сейчас", "что сейчас"
 6. Если просят посчитать, построить график/диаграмму ИЗ ДАННЫХ (чисел, файла CSV/Excel) → "data"
 7. Всё остальное → "chat"
 ВАЖНО — НЕ ПУТАЙ:
@@ -946,6 +1043,11 @@ ORCHESTRATOR_PROMPT = """Ты — умный маршрутизатор зада
 - "поищи хостинг и зарегистрируй домен" → "deploy" (конечное действие — регистрация)
 - "открой сайт и сделай скриншот" → "research" (браузер/парсинг)
 - "сколько стоит X" / "какая цена X" / "цены на X" → "research" (нужны актуальные данные)
+- "какой курс биткоина" / "курс доллара" / "цена эфира" / "btc сейчас" → "research" (актуальные данные)
+- "биткоин" / "bitcoin" / "ethereum" / "крипта" / "btc" / "eth" в любом контексте вопроса → "research"
+- "погода" / "прогноз погоды" / "температура" → "research" (актуальные данные)
+- "новости" / "что нового" / "что происходит" / "последние события" → "research"
+- "какой сейчас" / "что сейчас" / "сколько сейчас" → "research" (актуальные данные)
 - "найди решение задачи" / "найди ошибку" / "найди способ" → "chat" (поиск в знаниях, не в интернете)
 - "найди альтернативы X" → "chat" (поиск в знаниях, не в интернете)
 - "сравни X и Y" → "chat" (сравнение из знаний, не поиск в интернете)
@@ -998,10 +1100,7 @@ def detect_intent_llm(user_message: str, history: list, api_key: str) -> dict:
         for m in recent
     ]) or "нет истории"
 
-    prompt = ORCHESTRATOR_PROMPT.format(
-        message=user_message[:600],
-        history=history_text
-    )
+    prompt = ORCHESTRATOR_PROMPT.replace("{message}", user_message[:600]).replace("{history}", history_text)
 
     try:
         headers = {
@@ -1043,8 +1142,37 @@ def detect_intent_llm(user_message: str, history: list, api_key: str) -> dict:
     # ── Fallback: keyword matching (если LLM не ответил) ──
     msg_lower = user_message.lower()
     deploy_kw = ["ssh", "apt ", "apt-get", "pip install", "npm install", "docker", "nginx", "systemd", "деплой", "deploy", "разверни на", "установи на сервер"]
-    file_kw = ["word", "docx", ".pdf", "excel", "xlsx", "скачать файл", "создай файл", "сгенерируй файл"]
-    research_kw = ["найди в интернете", "поищи", "web search", "проверь сайт", "открой сайт"]
+    file_kw = ["word", "docx", ".pdf", " pdf", "pdf ", "pdf-", "сделай pdf", "создай pdf", "excel", "xlsx", "powerpoint", "pptx",
+                "скачать файл", "создай файл", "сгенерируй файл",
+                "сделай документ", "создай документ", "сделай таблицу", "создай таблицу",
+                "сделай отчёт", "создай отчёт", "сделай презентацию", "создай презентацию"]
+    research_kw = [
+        # Явные команды поиска
+        "найди в интернете", "поищи", "web search", "проверь сайт", "открой сайт",
+        "посмотри в интернете", "загугли", "найди актуальн", "найди информацию",
+        # Криптовалюты
+        "биткоин", "bitcoin", "btc", "ethereum", "eth", "solana", "sol",
+        "крипто", "crypto", "крипта", "usdt", "usdc", "bnb", "xrp",
+        # Валюты и финансы
+        "доллар", "евро", "рубль", "юань", "фунт", "иена",
+        "акции", "котировки", "нефть", "золото", "серебро",
+        # Цены
+        "курс ", "цена ", "стоимость ", "сколько стоит",
+        "текущий курс", "актуальный курс", "сегодня курс", "цена сейчас",
+        "какой курс", "какая цена", "сколько сейчас", "что сейчас с",
+        "сравни цены",
+        # Погода
+        "погода", "прогноз", "температура", "осадки", "ветер",
+        # Новости и события
+        "новости", "последние новости", "что происходит", "что нового",
+        "последние события", "текущие события",
+        # Актуальные вопросы
+        "узнай", "проверь",
+        # Контакты и расписания
+        "расписание", "время работы", "адрес", "телефон", "контакты",
+        # Рейтинги и отзывы
+        "отзывы", "рейтинг", "топ ", "лучшие",
+    ]
     data_kw = ["посчитай", "вычисли", "построй график", "анализ данных", "статистика"]
     if any(kw in msg_lower for kw in deploy_kw):
         return {"mode": "deploy", "reason": "fallback keyword", "confidence": 0.7}
@@ -1186,6 +1314,19 @@ def send_message(chat_id):
     agent_model = config["tools"]["model"]
     agent_model_name = config["tools"]["name"]
 
+    # ══ DEV MODE CHECK ══════════════════════════════════════════
+    is_dev_mode = False
+    dev_model_config = None
+    if user_settings.get("dev_mode") and request.user.get("role") == "admin":
+        is_dev_mode = True
+        dev_model_key = user_settings.get("dev_model", "claude-sonnet")
+        dev_model_config = DEV_MODELS.get(dev_model_key, DEV_MODELS["claude-sonnet"])
+        model = dev_model_config["model"]
+        model_name = dev_model_config["name"]
+        agent_model = dev_model_config["model"]  # Same model for everything in dev mode
+        agent_model_name = dev_model_config["name"]
+        logging.info(f"[DevMode] Admin using {model_name} ({model})")
+
     # Detect if this is an agent task (needs SSH/files/browser) or simple chat
     # ══ LLM ORCHESTRATOR: определяем намерение через AI, а не ключевые слова ══
     # Build chat history for context (needed for orchestrator too)
@@ -1194,7 +1335,14 @@ def send_message(chat_id):
         history.append({"role": m["role"], "content": m["content"][:200]})
 
     # Определяем намерение
-    if ssh_from_msg:
+    if is_dev_mode:
+        # Dev Mode: always deploy mode (full access to SSH, browser, files)
+        has_ssh = bool(ssh_credentials.get("host") and ssh_credentials.get("password"))
+        if has_ssh:
+            intent = {"mode": "deploy", "reason": "Dev Mode активен, SSH доступен", "confidence": 1.0}
+        else:
+            intent = {"mode": "chat", "reason": "Dev Mode активен, но SSH не настроен", "confidence": 1.0}
+    elif ssh_from_msg:
         intent = {"mode": "deploy", "reason": "SSH креденциалы в сообщении", "confidence": 1.0}
     else:
         intent = detect_intent_llm(user_message, history, OPENROUTER_API_KEY)
@@ -1203,11 +1351,27 @@ def send_message(chat_id):
 
     # ══ MODEL ROUTER: автовыбор модели по сложности запроса ══
     has_ssh = bool(ssh_credentials.get("host") and ssh_credentials.get("password"))
-    routed = select_model(user_message, variant=variant, history=history)
-    routed_model_id = routed["model_id"]
-    routed_model_name = routed["model_name"]
-    routed_tier = routed["tier"]
-    routed_complexity = routed["complexity"]
+    if is_dev_mode:
+        # In Dev Mode, skip model router — use selected dev model
+        routed_model_id = dev_model_config["model"]
+        routed_model_name = dev_model_config["name"]
+        routed_tier = "dev"
+        routed_complexity = 5
+        routed = {
+            "model_id": routed_model_id,
+            "model_name": routed_model_name,
+            "tier": routed_tier,
+            "complexity": routed_complexity,
+            "input_price": dev_model_config["input_price"],
+            "output_price": dev_model_config["output_price"]
+        }
+        logging.info(f"[DevMode] Skipping model router, using {routed_model_name}")
+    else:
+        routed = select_model(user_message, variant=variant, history=history)
+        routed_model_id = routed["model_id"]
+        routed_model_name = routed["model_name"]
+        routed_tier = routed["tier"]
+        routed_complexity = routed["complexity"]
     logging.info(f"[ModelRouter] query='{user_message[:60]}' complexity={routed_complexity} tier={routed_tier} model={routed_model_id}")
 
     is_agent_task = (mode == "deploy")
@@ -1236,11 +1400,13 @@ def send_message(chat_id):
             _lite_mode_text = 'Открываю браузер...' if is_browser_task else 'Генерирую файл...'
             yield f"data: {json.dumps({'type': 'agent_mode', 'text': _lite_mode_text})}\n\n"
 
+            _lite_dev_prompt = DEV_MODE_SYSTEM_PROMPT if is_dev_mode else None
             agent = AgentLoop(
                 model=agent_model,
                 api_key=OPENROUTER_API_KEY,
                 api_url=OPENROUTER_BASE_URL,
-                ssh_credentials={}  # No SSH needed for file generation
+                ssh_credentials={},  # No SSH needed for file generation
+                system_prompt=_lite_dev_prompt
             )
 
             with _agents_lock:
@@ -1284,6 +1450,13 @@ def send_message(chat_id):
 
             yield f"data: {json.dumps({'type': 'agent_mode', 'text': 'Запускаю автономный агент...', 'agents': agent_names, 'parallel': use_parallel})}\n\n"
 
+            # Build dev mode system prompt with SSH info if available
+            _dev_sys_prompt = None
+            if is_dev_mode:
+                _dev_sys_prompt = DEV_MODE_SYSTEM_PROMPT
+                if ssh_credentials.get('host'):
+                    _dev_sys_prompt += f"\n\nSSH доступ: {ssh_credentials['host']} (user: {ssh_credentials.get('username', 'root')}). Выполняй команды на сервере."
+
             if use_parallel:
                 # ── Parallel multi-agent execution ──
                 orchestrator = ParallelAgentOrchestrator(
@@ -1295,8 +1468,8 @@ def send_message(chat_id):
                 )
                 agent = orchestrator  # For stop functionality
 
-            elif enhanced:
-                # Multi-agent pipeline (sequential, 6 specialized agents)
+            elif enhanced and not is_dev_mode:
+                # Multi-agent pipeline (sequential, 6 specialized agents) — skip in Dev Mode
                 agent = MultiAgentLoop(
                     model=agent_model,
                     api_key=OPENROUTER_API_KEY,
@@ -1304,12 +1477,13 @@ def send_message(chat_id):
                     ssh_credentials=ssh_credentials
                 )
             else:
-                # Single agent loop
+                # Single agent loop (always used in Dev Mode)
                 agent = AgentLoop(
                     model=agent_model,
                     api_key=OPENROUTER_API_KEY,
                     api_url=OPENROUTER_BASE_URL,
-                    ssh_credentials=ssh_credentials
+                    ssh_credentials=ssh_credentials,
+                    system_prompt=_dev_sys_prompt
                 )
 
             # Register agent for stop functionality
@@ -1360,7 +1534,15 @@ def send_message(chat_id):
             code_keywords = ["код", "code", "функци", "class", "function", "html", "css", "js", "python", "api"]
             is_code = any(kw in user_message.lower() for kw in code_keywords)
 
-            if is_code:
+            # ══ DEV MODE CHAT: use dev model and dev prompt ══
+            if is_dev_mode:
+                active_model = dev_model_config["model"]
+                system_prompt = DEV_MODE_SYSTEM_PROMPT
+                if has_ssh:
+                    system_prompt += f"\n\nSSH доступ настроен: {ssh_credentials['host']} (user: {ssh_credentials['username']}). Ты можешь выполнять команды на сервере."
+                else:
+                    system_prompt += "\n\nSSH не настроен. Попроси пользователя настроить SSH в настройках (⚙️) или отправить креденциалы в сообщении."
+            elif is_code:
                 # For code tasks: use routed model (complexity-based) or coding model from variant
                 if routed_complexity >= 4:
                     active_model = config["coding"]["model"]  # Complex code → coding model (MiniMax/Grok)
@@ -1606,6 +1788,7 @@ def send_message(chat_id):
         chat2["total_tokens_in"] = chat2.get("total_tokens_in", 0) + tokens_in
         chat2["total_tokens_out"] = chat2.get("total_tokens_out", 0) + tokens_out
         chat2["model_used"] = model_name
+        chat2["model"] = model_name  # BUG-ANA-03 FIX: also write to 'model' field (SQLite column)
         chat2["variant"] = variant
         db2["chats"][chat_id] = chat2
 
@@ -1733,18 +1916,37 @@ def get_analytics():
     user_chats = [c for c in db["chats"].values() if c.get("user_id") == request.user_id]
     user_cost = sum(c.get("total_cost", 0) for c in user_chats)
     user_messages = sum(len(c.get("messages", [])) for c in user_chats)
-    user_tokens_in = sum(c.get("total_tokens_in", 0) for c in user_chats)
-    user_tokens_out = sum(c.get("total_tokens_out", 0) for c in user_chats)
+
+    # BUG-ANA-02 FIX: Compute tokens from individual messages (SQLite chats table
+    # does not have total_tokens_in/out columns; tokens are stored per-message).
+    user_tokens_in = 0
+    user_tokens_out = 0
+    for c in user_chats:
+        for msg in c.get("messages", []):
+            user_tokens_in += msg.get("tokens_in", 0)
+            user_tokens_out += msg.get("tokens_out", 0)
+        # Fallback: use stored totals if per-message tokens are missing
+        if user_tokens_in == 0 and user_tokens_out == 0:
+            user_tokens_in += c.get("total_tokens_in", 0)
+            user_tokens_out += c.get("total_tokens_out", 0)
 
     chat_stats = []
     for c in user_chats:
+        # BUG-ANA-03 FIX: model_used is stored in messages, not in chat root.
+        # Extract model from last assistant message.
+        chat_model = c.get("model_used", "") or c.get("model", "")
+        if not chat_model:
+            for msg in reversed(c.get("messages", [])):
+                if msg.get("role") == "assistant" and msg.get("model"):
+                    chat_model = msg["model"]
+                    break
         chat_stats.append({
             "id": c["id"],
             "title": c.get("title", ""),
             "cost": c.get("total_cost", 0),
             "messages": len(c.get("messages", [])),
             "variant": c.get("variant", ""),
-            "model": c.get("model_used", ""),
+            "model": chat_model,
             "created_at": c.get("created_at", "")
         })
 
@@ -2370,7 +2572,7 @@ def export_chat(chat_id):
     return Response(
         zip_data,
         mimetype='application/zip',
-        headers={'Content-Disposition': f'attachment; filename=super-agent-{chat_id}.zip'}
+        headers={'Content-Disposition': f'attachment; filename=dev-agent-{chat_id}.zip'}
     )
 
 

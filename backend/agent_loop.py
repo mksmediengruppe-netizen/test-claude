@@ -19,6 +19,7 @@ Super Agent v6.0 Full Feature Set:
 import json
 import time
 import re
+import os
 import sqlite3
 import traceback
 import logging
@@ -555,11 +556,12 @@ class AgentLoop:
     MAX_HEAL_ATTEMPTS = 3
 
     def __init__(self, model, api_key, api_url="https://openrouter.ai/api/v1/chat/completions",
-                 ssh_credentials=None):
+                 ssh_credentials=None, system_prompt=None):
         self.model = model
         self.api_key = api_key
         self.api_url = api_url
         self.ssh_credentials = ssh_credentials or {}
+        self.system_prompt = system_prompt  # Custom system prompt (e.g. Dev Mode)
         self.browser = BrowserAgent()
         self.total_tokens_in = 0
         self.total_tokens_out = 0
@@ -991,7 +993,7 @@ class AgentLoop:
                 try:
                     from artifact_generator import ArtifactGenerator
                     gen = ArtifactGenerator(
-                        generated_dir=os.environ.get("GENERATED_DIR", "/var/www/super-agent/backend/generated")
+                        generated_dir=os.environ.get("GENERATED_DIR", "/var/www/claude/backend/generated")
                     )
                     result = gen.edit_image(file_path, operations, output_filename)
                     return result
@@ -1006,7 +1008,7 @@ class AgentLoop:
                 try:
                     from artifact_generator import ArtifactGenerator
                     gen = ArtifactGenerator(
-                        generated_dir=os.environ.get("GENERATED_DIR", "/var/www/super-agent/backend/generated")
+                        generated_dir=os.environ.get("GENERATED_DIR", "/var/www/claude/backend/generated")
                     )
                     result = gen.generate_design(design_type, content, style, dimensions)
                     return result
@@ -1022,7 +1024,7 @@ class AgentLoop:
                 try:
                     from project_manager import ProjectManager
                     pm = ProjectManager(
-                        data_dir=os.environ.get("DATA_DIR", "/var/www/super-agent/backend/data")
+                        data_dir=os.environ.get("DATA_DIR", "/var/www/claude/backend/data_dev")
                     )
                     user_id = getattr(self, '_user_id', 'default')
                     result = pm.store_memory(user_id, key, value, category)
@@ -1038,7 +1040,7 @@ class AgentLoop:
                 try:
                     from project_manager import ProjectManager
                     pm = ProjectManager(
-                        data_dir=os.environ.get("DATA_DIR", "/var/www/super-agent/backend/data")
+                        data_dir=os.environ.get("DATA_DIR", "/var/www/claude/backend/data_dev")
                     )
                     user_id = getattr(self, '_user_id', 'default')
                     result = pm.recall_memory(user_id, query, category)
@@ -1056,7 +1058,7 @@ class AgentLoop:
                 try:
                     from project_manager import ProjectManager
                     pm = ProjectManager(
-                        data_dir=os.environ.get("DATA_DIR", "/var/www/super-agent/backend/data")
+                        data_dir=os.environ.get("DATA_DIR", "/var/www/claude/backend/data_dev")
                     )
                     user_id = getattr(self, '_user_id', 'default')
                     chat_id = getattr(self, '_chat_id', None)
@@ -1227,7 +1229,7 @@ class AgentLoop:
         or placeholder for AI-generated images.
         """
         import uuid as _uuid
-        GENERATED_DIR = os.environ.get("GENERATED_DIR", "/var/www/super-agent/backend/generated")
+        GENERATED_DIR = os.environ.get("GENERATED_DIR", "/var/www/claude/backend/generated")
         os.makedirs(GENERATED_DIR, exist_ok=True)
 
         file_id = str(_uuid.uuid4())[:12]
@@ -1424,7 +1426,7 @@ class AgentLoop:
         import tempfile
         import uuid as _uuid
         
-        GENERATED_DIR = os.environ.get("GENERATED_DIR", "/var/www/super-agent/backend/generated")
+        GENERATED_DIR = os.environ.get("GENERATED_DIR", "/var/www/claude/backend/generated")
         os.makedirs(GENERATED_DIR, exist_ok=True)
         
         # Security: check for forbidden/dangerous operations
@@ -1517,7 +1519,7 @@ os.chdir("{GENERATED_DIR}")
         import matplotlib.pyplot as plt
         import numpy as np
         
-        GENERATED_DIR = os.environ.get("GENERATED_DIR", "/var/www/super-agent/backend/generated")
+        GENERATED_DIR = os.environ.get("GENERATED_DIR", "/var/www/claude/backend/generated")
         os.makedirs(GENERATED_DIR, exist_ok=True)
         
         file_id = str(_uuid.uuid4())[:12]
@@ -1645,7 +1647,7 @@ os.chdir("{GENERATED_DIR}")
         """Create an interactive artifact (HTML, SVG, Mermaid, React)."""
         import uuid as _uuid
         
-        GENERATED_DIR = os.environ.get("GENERATED_DIR", "/var/www/super-agent/backend/generated")
+        GENERATED_DIR = os.environ.get("GENERATED_DIR", "/var/www/claude/backend/generated")
         os.makedirs(GENERATED_DIR, exist_ok=True)
         
         file_id = str(_uuid.uuid4())[:12]
@@ -2022,8 +2024,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
         if chat_history is None:
             chat_history = []
 
-        # Build initial messages
-        messages = [{"role": "system", "content": AGENT_SYSTEM_PROMPT}]
+        # Build initial messages — use custom system_prompt if provided (Dev Mode)
+        active_system_prompt = self.system_prompt if self.system_prompt else AGENT_SYSTEM_PROMPT
+        messages = [{"role": "system", "content": active_system_prompt}]
 
         for msg in chat_history[-10:]:
             messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})

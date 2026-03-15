@@ -90,8 +90,9 @@ function loadSettings() {
   try {
     const saved = localStorage.getItem('sa_settings');
     if (saved) Object.assign(STATE.settings, JSON.parse(saved));
-    const savedChats = localStorage.getItem('sa_chats');
-    if (savedChats) STATE.chats = JSON.parse(savedChats);
+    // BUG-ARCH-01 FIX: Chats are ALWAYS loaded from backend in initApp().
+    // Do NOT load chats from localStorage — they are stale and per-browser.
+    // Only load non-chat data from localStorage as fallback:
     const savedAnalytics = localStorage.getItem('sa_analytics');
     if (savedAnalytics) STATE.analytics = JSON.parse(savedAnalytics);
     const savedCanvases = localStorage.getItem('sa_canvases');
@@ -100,6 +101,8 @@ function loadSettings() {
     if (savedScheduled) STATE.scheduledTasks = JSON.parse(savedScheduled);
     const savedAudit = localStorage.getItem('sa_audit');
     if (savedAudit) STATE.auditLog = JSON.parse(savedAudit);
+    // Clear stale chats from localStorage to avoid confusion
+    localStorage.removeItem('sa_chats');
   } catch(e) {}
 }
 
@@ -263,8 +266,9 @@ async function initApp() {
   // Switch to chat tab first
   switchTab('chat');
 
-  // Load chats from backend
+  // BUG-ARCH-01 FIX: Load chats EXCLUSIVELY from backend — no localStorage fallback
   const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+  STATE.chats = {};  // Always start fresh from server
   if (token) {
     try {
       const resp = await fetch(`${CONFIG.BACKEND_URL}/api/chats`, {
@@ -273,13 +277,7 @@ async function initApp() {
       if (resp.ok) {
         const data = await resp.json();
         const backendChats = data.chats || [];
-        // Always refresh chats from backend (admin sees all chats)
-        // Keep only local-only chats (no backendId), replace backend chats
-        const localOnlyChats = {};
-        Object.entries(STATE.chats).forEach(([id, chat]) => {
-          if (!chat.backendId) localOnlyChats[id] = chat;
-        });
-        STATE.chats = { ...localOnlyChats };
+        // Replace STATE.chats entirely with server data
         backendChats.forEach(bc => {
           const localId = 'bc_' + bc.id;
           STATE.chats[localId] = {
@@ -296,9 +294,9 @@ async function initApp() {
             owner: bc.owner || '',  // email of owner for admin view
           };
         });
-        saveChats();
+        // No saveChats() needed — data is on server, not localStorage
       }
-    } catch(e) {}
+    } catch(e) { console.warn('initApp: failed to load chats from backend', e); }
   }
 
   // Render chat list
@@ -318,6 +316,9 @@ async function initApp() {
   renderAuditLog();
   renderAdminPanel();
   renderCanvases();
+
+  // Init Dev Mode for admin
+  initDevMode();
 
   showToast('Добро пожаловать, ' + name + '!', 'success');
 }
@@ -392,13 +393,14 @@ function switchTab(tabName, btn) {
   if (window.innerWidth <= 768) closeMobileSidebar();
 
   // Tab-specific init
-  if (tabName === 'analytics') renderAnalytics();
+  if (tabName === 'analytics') setTimeout(() => renderAnalytics(), 50); // BUG-ANA-ASYNC FIX: defer to allow DOM to be ready
   if (tabName === 'admin') renderAdminPanel();
   if (tabName === 'agents') renderAgents();
   if (tabName === 'templates') renderTemplates();
   if (tabName === 'connectors') renderConnectors();
   if (tabName === 'scheduled') renderScheduledTasks();
   if (tabName === 'audit') renderAuditLog();
+  if (tabName === 'canvas') renderCanvases();
 }
 // ── Chat Management ────────────────────────────────────────────────────────
 function showWelcome() {
@@ -419,7 +421,7 @@ function showWelcome() {
   const input = document.getElementById('chatInput');
   if (input) input.focus();
 }
-function newChat() {
+async function newChat() {
   const id = 'chat_' + Date.now();
   STATE.chats[id] = {
     id,
@@ -431,6 +433,11 @@ function newChat() {
     model: STATE.selectedModel,
   };
   STATE.currentChatId = id;
+
+  // BUG-ARCH-02 FIX: Do NOT create chat on backend immediately — use lazy creation on first message.
+  // This prevents empty "Новый чат" entries from accumulating in the sidebar after page reload.
+  // backendId will be assigned in sendMessage() / callAPI() when the first message is sent.
+
   saveChats();
   renderChatList();
   loadChat(id);
@@ -458,7 +465,9 @@ function loadChat(chatId) {
   } else {
     titleEl.title = '';
   }
-  document.getElementById('chatCostDisplay').textContent = '₽' + (STATE.chatCost * CONFIG.USD_TO_RUB).toFixed(2);
+  // FIX BUG-002: Adaptive precision for small amounts
+  const _rubAmt = STATE.chatCost * CONFIG.USD_TO_RUB;
+  document.getElementById('chatCostDisplay').textContent = '₽' + (_rubAmt < 0.01 ? _rubAmt.toFixed(4) : _rubAmt.toFixed(2));
   const tokensValEl = document.getElementById('totalTokensVal');
   if (tokensValEl) tokensValEl.textContent = STATE.totalTokens.toLocaleString();
   const msgCountEl = document.getElementById('chatMsgCount');
@@ -551,7 +560,7 @@ function deleteChat(chatId, event) {
   showToast('Чат удалён', 'info');
 }
 
-function renameChatInline(chatId, event) {
+async function renameChatInline(chatId, event) {
   if (event) event.stopPropagation();
   closeChatContextMenu();
   const chat = STATE.chats[chatId];
@@ -563,6 +572,17 @@ function renameChatInline(chatId, event) {
     renderChatList();
     if (STATE.currentChatId === chatId) {
       document.getElementById('chatTitle').textContent = chat.title;
+    }
+    // BUG-ARCH-02 FIX: Sync rename to backend
+    const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+    if (chat.backendId && token) {
+      try {
+        await fetch(`${CONFIG.BACKEND_URL}/api/chats/${chat.backendId}/rename`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ title: chat.title }),
+        });
+      } catch(e) { console.warn('renameChatInline: backend sync failed', e); }
     }
     showToast('Чат переименован', 'success');
   }
@@ -691,7 +711,18 @@ function renderMessage(role, content, cost = 0, tokens = 0, animate = true) {
         <button class="msg-action-btn" onclick="likeMessage('${msgId}')" title="Нравится">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
         </button>
-      </div>` : ''}
+        <button class="msg-action-btn" onclick="deleteMessage('${msgId}')" title="Удалить">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>
+      </div>` : `
+      <div class="message-actions">
+        <button class="msg-action-btn" onclick="editMessage('${msgId}')" title="Редактировать">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <button class="msg-action-btn" onclick="deleteMessage('${msgId}')" title="Удалить">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>
+      </div>`}
     </div>
   `;
 
@@ -893,6 +924,10 @@ function finalizeStreamingMessage(msgId, fullText, cost, tokens) {
       msgCountEl.textContent = cnt + ' ' + (cnt === 1 ? 'сообщение' : cnt >= 2 && cnt <= 4 ? 'сообщения' : 'сообщений');
     }
   }
+  // Remove live agent thumbnail
+  const liveThumbnail = document.getElementById('agentThumbnailLive');
+  if (liveThumbnail) liveThumbnail.id = 'agentThumbnail_' + msgId;  // Keep but stop updating
+
   // Add action buttons
   const msgEl = document.getElementById(msgId);
   if (msgEl) {
@@ -914,6 +949,7 @@ function finalizeStreamingMessage(msgId, fullText, cost, tokens) {
 // ── Send Message ───────────────────────────────────────────────
 async function sendMessage() {
   if (STATE.isGenerating) return;
+  resetAgentStepCounter();
 
   const input = document.getElementById('chatInput');
   const text = input.value.trim();
@@ -1026,6 +1062,7 @@ async function callAPI(userMessage, chat) {
   let fullText = '';
   let inputTokens = 0;
   let outputTokens = 0;
+  let backendCost = null;  // Will be set from backend 'done' event
 
   // Add task step
   addTaskStep('🤔', 'Анализирую запрос...');
@@ -1139,19 +1176,31 @@ async function callAPI(userMessage, chat) {
               const isHeal = parsed.is_heal ? ' 🔄 (авто-исправление)' : '';
               const argsStr = Object.keys(args).length > 0 ? ' ' + JSON.stringify(args).substring(0, 60) : '';
               addTaskStep('🔧', `Инструмент: ${tool}${argsStr}${isHeal}`);
-              addThinkingStep(streamMsgId, '🔧', `Инструмент: ${tool}${isHeal}`);
+              addThinkingStep(streamMsgId, '🔧', `Инструмент: ${tool}${isHeal}`, tool, null, null);
               addTerminalLine(`$ ${tool}${argsStr}`, 'cmd');
+              // Add Manus-style thumbnail for SSH/code tools
+              if (['ssh_execute', 'code_interpreter'].includes(tool)) {
+                const sshDesc = tool === 'ssh_execute' 
+                  ? (args.command || args.cmd || 'Выполнение команды...')
+                  : (args.code ? args.code.substring(0, 60) : 'Выполнение кода...');
+                addAgentThumbnailToChat(null, tool, sshDesc);
+              }
             } else if (type === 'tool_result') {
               // Backend sends 'preview' field, not 'output'
               const out = (parsed.preview || parsed.output || parsed.summary || '').substring(0, 200);
               const elapsed = parsed.elapsed ? ` (${parsed.elapsed}с)` : '';
               const ok = parsed.success !== false ? '✅' : '❌';
               addTaskStep(ok, `${parsed.tool || 'Результат'}${elapsed}: ${out || 'выполнено'}`);
-              addThinkingStep(streamMsgId, ok, `${parsed.tool || 'Результат'}${elapsed}`);
+              addThinkingStep(streamMsgId, ok, `${parsed.tool || 'Результат'}${elapsed}`, parsed.tool, out || null, parsed.screenshot || null);
               if (out) addTerminalLine(out, parsed.success !== false ? 'output' : 'error');
               // Show browser screenshot if available
               if (parsed.screenshot) {
                 updateAgentBrowserScreenshot(parsed.screenshot, parsed.tool, parsed.args);
+                // Add Manus-style thumbnail in chat
+                const thumbDesc = parsed.tool === 'browser_navigate' 
+                  ? (parsed.args?.url || 'Навигация...') 
+                  : (parsed.preview || parsed.tool || '');
+                addAgentThumbnailToChat(parsed.screenshot, parsed.tool, thumbDesc);
               }
             } else if (type === 'self_heal') {
               const msg = `Авто-исправление #${parsed.attempt}: ${parsed.fix_description || ''}`;
@@ -1210,6 +1259,7 @@ async function callAPI(userMessage, chat) {
             } else if (type === 'done') {
               inputTokens = parsed.tokens_in || 0;
               outputTokens = parsed.tokens_out || 0;
+              if (parsed.cost !== undefined) backendCost = parsed.cost;  // Use backend cost (accurate for Dev Mode)
             } else if (type === 'step') {
               addTaskStep('📈', parsed.text || '');
               addThinkingStep(streamMsgId, '📈', parsed.text || '');
@@ -1246,10 +1296,15 @@ async function callAPI(userMessage, chat) {
     }
   }
 
-  // Calculate cost
-  const modelConfig = CONFIG.MODELS[STATE.selectedModel] || CONFIG.MODELS[CONFIG.DEFAULT_MODEL];
-  const cost = (inputTokens * (modelConfig.inputCost || 0)) + (outputTokens * (modelConfig.outputCost || 0));  // cost in USD
+  // Calculate cost — use backend cost if available (Dev Mode), otherwise calculate locally
   const totalTokens = inputTokens + outputTokens;
+  let cost;
+  if (backendCost !== null && backendCost > 0) {
+    cost = backendCost;  // Backend calculated cost (accurate for Dev Mode models)
+  } else {
+    const modelConfig = CONFIG.MODELS[STATE.selectedModel] || CONFIG.MODELS[CONFIG.DEFAULT_MODEL];
+    cost = (inputTokens * (modelConfig.inputCost || 0)) + (outputTokens * (modelConfig.outputCost || 0));
+  }
 
   // Finalize thinking block
   finalizeThinkingBlock(streamMsgId);
@@ -1257,13 +1312,19 @@ async function callAPI(userMessage, chat) {
   // Update state
   STATE.taskCost = cost;
   STATE.chatCost += cost;
+  STATE.totalCost = (STATE.totalCost || 0) + cost; // FIX BUG-003: Update STATE.totalCost
   STATE.totalTokens += totalTokens;
   chat.totalCost = (chat.totalCost || 0) + cost;
   chat.totalTokens = (chat.totalTokens || 0) + totalTokens;
 
   // Update UI
+  // FIX BUG-002: Use adaptive precision for small amounts
   const taskCostEl = document.getElementById('chatCostDisplay');
-  if (taskCostEl) taskCostEl.textContent = '₽' + (STATE.chatCost * CONFIG.USD_TO_RUB).toFixed(2);
+  if (taskCostEl) {
+    const rubAmount = STATE.chatCost * CONFIG.USD_TO_RUB;
+    const formatted = rubAmount < 0.01 ? rubAmount.toFixed(4) : rubAmount.toFixed(2);
+    taskCostEl.textContent = '₽' + formatted;
+  }
   const tokensEl = document.getElementById('totalTokensVal');
   if (tokensEl) tokensEl.textContent = STATE.totalTokens.toLocaleString();
 
@@ -1379,26 +1440,111 @@ function generateFallbackResponse(query) {
 }
 
 // ── Task Stream ────────────────────────────────────────────────
-function addThinkingStep(msgId, icon, text) {
+// Global step data store for click-to-expand
+const _stepDataStore = {};
+
+function addThinkingStep(msgId, icon, text, toolName, toolResult, screenshot) {
   const thinkId = 'think_' + msgId;
   const stepsEl = document.getElementById(thinkId + '_steps');
   const countEl = document.getElementById(thinkId + '_count');
   if (!stepsEl) return;
-
+  const stepId = 'step_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+  // Store step data for click handler
+  _stepDataStore[stepId] = {
+    icon, text, toolName: toolName || null,
+    toolResult: toolResult || null,
+    screenshot: screenshot || null
+  };
   const step = document.createElement('div');
   step.className = 'thinking-step';
+  step.id = stepId;
+  if (toolName) step.dataset.tool = toolName;
   const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  // Manus-style: terminal icon for shell tools, globe for browser
+  const isShell = ['ssh_execute','code_interpreter','file_write','file_read'].includes(toolName);
+  const isBrowser = ['browser_navigate','browser_check_site','browser_get_text','browser_get_links','browser_screenshot_check'].includes(toolName);
+  const pillIcon = isShell ? '>_' : (isBrowser ? '🌐' : icon);
   step.innerHTML = `
-    <span class="thinking-step-icon">${icon}</span>
+    <span class="thinking-step-icon">${pillIcon}</span>
     <span class="thinking-step-text">${escapeHtml(text)}</span>
     <span class="thinking-step-time">${time}</span>
   `;
+  // Click handler — open right panel with step details
+  step.addEventListener('click', () => showStepInPanel(stepId));
   stepsEl.appendChild(step);
-  stepsEl.scrollTop = stepsEl.scrollHeight;
-
   // Update count
   const count = stepsEl.querySelectorAll('.thinking-step').length;
   if (countEl) countEl.textContent = count + '/' + count;
+}
+
+function showStepInPanel(stepId) {
+  const data = _stepDataStore[stepId];
+  if (!data) return;
+  // Highlight active step
+  document.querySelectorAll('.thinking-step.active').forEach(s => s.classList.remove('active'));
+  const stepEl = document.getElementById(stepId);
+  if (stepEl) stepEl.classList.add('active');
+  // Open agent computer panel
+  const panel = document.getElementById('agentComputer');
+  if (panel) {
+    panel.classList.remove('hidden');
+    if (typeof STATE !== 'undefined') STATE.agentComputerVisible = true;
+  }
+
+  // Helper: activate a pane by pane name (terminal/browser/steps)
+  function _activatePane(paneName) {
+    // Deactivate all panes and tabs
+    document.querySelectorAll('.rp-pane, .ac-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.rp-tab, .ac-tab, .agent-comp-tab').forEach(t => t.classList.remove('active'));
+    // Activate pane
+    const paneEl = document.getElementById('pane-' + paneName) || document.getElementById('ac-' + paneName);
+    if (paneEl) {
+      // If it's an inner alias (display:contents), activate its parent rp-pane
+      const parent = paneEl.closest('.rp-pane');
+      if (parent) parent.classList.add('active');
+      else paneEl.classList.add('active');
+    }
+    // Activate tab button
+    const tabBtn = document.getElementById('tab-' + paneName + '-btn');
+    if (tabBtn) tabBtn.classList.add('active');
+  }
+
+  if (data.screenshot) {
+    // Show browser screenshot
+    const img = document.getElementById('acBrowserScreenshot');
+    const placeholder = document.getElementById('acBrowserPlaceholder');
+    const bar = document.getElementById('acBrowserBar');
+    const urlEl = document.getElementById('acBrowserUrl');
+    if (img) { img.src = 'data:image/png;base64,' + data.screenshot; img.style.display = 'block'; }
+    if (placeholder) placeholder.style.display = 'none';
+    if (bar) bar.style.display = 'flex';
+    if (urlEl) urlEl.textContent = data.text || data.toolName || '';
+    _activatePane('browser');
+  } else if (data.toolResult) {
+    // Show terminal output — clear and show only this step's result
+    const terminal = document.getElementById('terminalOutput');
+    if (terminal) {
+      // Clear terminal and show step result cleanly
+      terminal.innerHTML = '';
+      const header = document.createElement('div');
+      header.className = 'tl ti';
+      header.textContent = '$ ' + (data.toolName || 'Команда') + ' — ' + (data.text || '');
+      terminal.appendChild(header);
+      const sep = document.createElement('div');
+      sep.className = 'tl ti';
+      sep.textContent = '─'.repeat(40);
+      terminal.appendChild(sep);
+      const out = document.createElement('div');
+      out.className = 'tl';
+      out.innerHTML = '<span class="term-output">' + escapeHtml(String(data.toolResult).substring(0, 3000)) + '</span>';
+      terminal.appendChild(out);
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+    _activatePane('terminal');
+  } else {
+    // Default: switch to terminal tab
+    _activatePane('terminal');
+  }
 }
 
 function toggleThinkingBlock(thinkId) {
@@ -1469,7 +1615,7 @@ function showGenerationUI(show) {
     if (statusBadge) statusBadge.classList.add('hidden');
     if (sendBtn) { sendBtn.style.display = 'flex'; sendBtn.title = 'Отправить (Enter)'; }
     if (stopBtn) { stopBtn.style.display = 'none'; }
-    if (footerHint) { footerHint.textContent = 'Enter — отправить · Shift+Enter — новая строка · Ctrl+/ — поиск'; footerHint.className = ''; }
+    if (footerHint) { footerHint.textContent = 'Enter — отправить · Shift+Enter — новая строка · Ctrl+K — поиск'; footerHint.className = ''; }
     if (chatInput) { chatInput.placeholder = 'Напишите задачу или вопрос...'; }
     const steps = document.getElementById('taskSteps');
     if (steps) steps.innerHTML = '';
@@ -1528,8 +1674,8 @@ function cancelTask() {
 function toggleModelDropdown() {
   const menu = document.getElementById('modelMenu');
   const btn = document.getElementById('modelSelBtn');
-  const isOpen = !menu.classList.contains('hidden');
-  menu.classList.toggle('hidden');
+  const isOpen = menu.classList.contains('open');
+  menu.classList.toggle('open');
   btn.setAttribute('aria-expanded', !isOpen);
 
   if (!isOpen) {
@@ -1540,7 +1686,7 @@ function toggleModelDropdown() {
 function closeModelDropdownOutside(e) {
   const wrap = document.querySelector('.model-sel-wrap');
   if (wrap && !wrap.contains(e.target)) {
-    document.getElementById('modelMenu').classList.add('hidden');
+    document.getElementById('modelMenu').classList.remove('open');
     document.getElementById('modelSelBtn').setAttribute('aria-expanded', 'false');
   }
 }
@@ -1553,7 +1699,7 @@ function selectModel(modelId, modelName, dotColor) {
   if (labelEl) labelEl.textContent = model?.name || modelName;
   const dotEl = document.getElementById('modelDot');
   if (dotEl) dotEl.className = `model-dropdown-dot ${dotColor}`;
-  document.getElementById('modelMenu')?.classList.add('hidden');
+  document.getElementById('modelMenu')?.classList.remove('open');
   document.getElementById('modelSelBtn')?.setAttribute('aria-expanded', 'false');
 
   // Update active state in dropdown
@@ -1570,24 +1716,25 @@ function selectModel(modelId, modelName, dotColor) {
 }
 
 function renderModelDropdown() {
+  // FIX BUG-001: Use CONFIG.MODELS (not SELF_CHECK_LEVELS) for model selector
   const menu = document.getElementById('modelMenu');
   if (!menu) return;
-  menu.innerHTML = Object.entries(CONFIG.SELF_CHECK_LEVELS).map(([id, lvl]) => {
-    const isActive = STATE.selfCheckLevel === id;
-    const qualityLabel = lvl.quality > 0 ? `К +${lvl.quality}%` : '';
-    const priceLabel = lvl.pricePct > 0 ? `Цена +${lvl.pricePct}%` : 'Бесплатно';
+  const dotColors = { original: 'red', premium: 'green', budget: 'blue' };
+  menu.innerHTML = Object.entries(CONFIG.MODELS).map(([id, model]) => {
+    const isActive = STATE.selectedModel === id;
+    const dotColor = dotColors[id] || 'gray';
+    const costPer1k = (((model.inputCost || 0) + (model.outputCost || 0)) / 2 * 1000 * CONFIG.USD_TO_RUB).toFixed(2);
     return `
       <div class="model-dropdown-item ${isActive ? 'active' : ''}" 
            data-model-id="${id}"
-           onclick="selectSelfCheck('${id}')">
-        <span class="model-dropdown-dot ${lvl.dot}"></span>
+           onclick="selectModel('${id}', '${model.name}', '${dotColor}')">
+        <span class="model-dropdown-dot ${dotColor}"></span>
         <div class="model-dropdown-info">
-          <div class="model-dropdown-name">${lvl.emoji} ${lvl.name}</div>
-          <div class="model-dropdown-desc">${lvl.desc}</div>
+          <div class="model-dropdown-name">${model.name}</div>
+          <div class="model-dropdown-desc">${model.desc}</div>
         </div>
         <div class="model-dropdown-price" style="text-align:right;font-size:11px;line-height:1.3">
-          <div style="color:#4ade80">${qualityLabel}</div>
-          <div style="color:${lvl.pricePct > 100 ? '#f87171' : lvl.pricePct > 0 ? '#fbbf24' : '#9ca3af'}">${priceLabel}</div>
+          <div style="color:#9ca3af">₽${costPer1k}/1k</div>
         </div>
       </div>
     `;
@@ -1597,12 +1744,13 @@ function renderModelDropdown() {
 function selectSelfCheck(levelId) {
   STATE.selfCheckLevel = levelId;
   const lvl = CONFIG.SELF_CHECK_LEVELS[levelId];
-  // Update button label
-  const labelEl = document.getElementById('modelSelLabel');
+  // FIX BUG-004: Update vLabel/vDot (self-check button), NOT modelSelLabel/modelDot (model button)
+  const labelEl = document.getElementById('vLabel');
   if (labelEl) labelEl.textContent = `${lvl.emoji} ${lvl.name}`;
-  const dotEl = document.getElementById('modelDot');
-  if (dotEl) dotEl.className = `model-dropdown-dot ${lvl.dot}`;
-  document.getElementById('modelMenu')?.classList.add('hidden');
+  const dotEl = document.getElementById('vDot');
+  const dotClassMap = { gray: 'vd-free', green: 'vd-light', orange: 'vd-medium', red: 'vd-deep' };
+  if (dotEl) dotEl.className = 'vdot ' + (dotClassMap[lvl.dot] || 'vd-free');
+  document.getElementById('modelMenu')?.classList.remove('open');
   document.getElementById('modelSelBtn')?.setAttribute('aria-expanded', 'false');
   // Update active state
   document.querySelectorAll('.model-dropdown-item').forEach(el => el.classList.remove('active'));
@@ -1958,6 +2106,102 @@ function copyMessage(msgId) {
   }
 }
 
+function editMessage(msgId) {
+  const contentEl = document.getElementById('content_' + msgId);
+  if (!contentEl) return;
+  const originalText = contentEl.innerText;
+  const msgEl = document.getElementById(msgId);
+  if (!msgEl) return;
+  // Replace content with textarea for editing
+  const textarea = document.createElement('textarea');
+  textarea.value = originalText;
+  textarea.style.cssText = 'width:100%;min-height:80px;background:var(--bg3);color:var(--text);border:1px solid var(--accent-primary);border-radius:6px;padding:8px;font-size:14px;resize:vertical;';
+  contentEl.replaceWith(textarea);
+  textarea.focus();
+  // Save/Cancel buttons
+  const actionsEl = msgEl.querySelector('.message-actions');
+  const savedActions = actionsEl?.innerHTML || '';
+  if (actionsEl) {
+    actionsEl.innerHTML = `
+      <button class="msg-action-btn" style="color:var(--accent-green);" onclick="saveEditedMessage('${msgId}')" title="Сохранить">✓ Сохранить</button>
+      <button class="msg-action-btn" style="color:var(--accent-red);" onclick="cancelEditMessage('${msgId}', '${encodeURIComponent(originalText)}')" title="Отмена">✕ Отмена</button>
+    `;
+  }
+  textarea.dataset.msgId = msgId;
+}
+
+function saveEditedMessage(msgId) {
+  const msgEl = document.getElementById(msgId);
+  if (!msgEl) return;
+  const textarea = msgEl.querySelector('textarea');
+  if (!textarea) return;
+  const newText = textarea.value.trim();
+  // Restore content div
+  const contentDiv = document.createElement('div');
+  contentDiv.className = 'message-content';
+  contentDiv.id = 'content_' + msgId;
+  contentDiv.innerHTML = escapeHtml(newText).replace(/\n/g, '<br>');
+  textarea.replaceWith(contentDiv);
+  // Update STATE
+  const chat = STATE.chats[STATE.currentChatId];
+  if (chat) {
+    const msgIndex = chat.messages.findIndex(m => m.id === msgId);
+    if (msgIndex !== -1) chat.messages[msgIndex].content = newText;
+    saveChats();
+  }
+  // Restore actions
+  const actionsEl = msgEl.querySelector('.message-actions');
+  if (actionsEl) {
+    actionsEl.innerHTML = `
+      <button class="msg-action-btn" onclick="editMessage('${msgId}')" title="Редактировать">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </button>
+      <button class="msg-action-btn" onclick="deleteMessage('${msgId}')" title="Удалить">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </button>
+    `;
+  }
+  showToast('Сообщение отредактировано', 'success');
+}
+
+function cancelEditMessage(msgId, encodedOriginal) {
+  const msgEl = document.getElementById(msgId);
+  if (!msgEl) return;
+  const textarea = msgEl.querySelector('textarea');
+  if (!textarea) return;
+  const originalText = decodeURIComponent(encodedOriginal);
+  const contentDiv = document.createElement('div');
+  contentDiv.className = 'message-content';
+  contentDiv.id = 'content_' + msgId;
+  contentDiv.innerHTML = escapeHtml(originalText).replace(/\n/g, '<br>');
+  textarea.replaceWith(contentDiv);
+  // Restore actions
+  const actionsEl = msgEl.querySelector('.message-actions');
+  if (actionsEl) {
+    actionsEl.innerHTML = `
+      <button class="msg-action-btn" onclick="editMessage('${msgId}')" title="Редактировать">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </button>
+      <button class="msg-action-btn" onclick="deleteMessage('${msgId}')" title="Удалить">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </button>
+    `;
+  }
+}
+
+function deleteMessage(msgId) {
+  if (!confirm('Удалить это сообщение?')) return;
+  const msgEl = document.getElementById(msgId);
+  if (msgEl) msgEl.remove();
+  // Update STATE
+  const chat = STATE.chats[STATE.currentChatId];
+  if (chat) {
+    chat.messages = chat.messages.filter(m => m.id !== msgId);
+    saveChats();
+  }
+  showToast('Сообщение удалено', 'success');
+}
+
 function copyCode(btn) {
   const pre = btn.closest('pre');
   const code = pre?.querySelector('code');
@@ -2149,7 +2393,7 @@ function renderSettingsPanel(panel) {
         <div class="settings-section-title">Статистика использования</div>
         <div class="settings-row"><span class="settings-label">Всего запросов</span><span style="color:var(--text1)">${STATE.analytics.length}</span></div>
         <div class="settings-row"><span class="settings-label">Всего токенов</span><span style="color:var(--text1)">${totalTokens.toLocaleString()}</span></div>
-        <div class="settings-row"><span class="settings-label">Потрачено</span><span style="color:var(--accent-green)">$${totalCost.toFixed(4)} (₽${totalRub})</span></div>
+        <div class="settings-row"><span class="settings-label">Потрачено</span><span style="color:var(--accent-green)">₽${totalRub}</span></div>
         <div class="settings-row" style="margin-top:16px">
           <button class="btn-secondary" onclick="exportAnalytics()">Экспорт CSV</button>
         </div>
@@ -2169,6 +2413,12 @@ function saveSetting(key, value) {
   saveSettings();
 }
 
+function toggleTheme() {
+  const themes = ['dark', 'light', 'system'];
+  const current = STATE.settings.theme || 'dark';
+  const next = themes[(themes.indexOf(current) + 1) % themes.length];
+  setTheme(next, null);
+}
 function setTheme(theme, el) {
   document.querySelectorAll('.appearance-option').forEach(o => o.classList.remove('active'));
   el.classList.add('active');
@@ -2243,8 +2493,17 @@ async function updateUsageStats() {
   const totalTokens = STATE.analytics.reduce((sum, a) => sum + (a.inputTokens || 0) + (a.outputTokens || 0), 0);
   const container = document.getElementById('usageStats');
   if (!container) return;
-  // Fetch real-time balance from backend
+  // Fetch real-time balance from backend (with timeout)
   let balanceHtml = '';
+  // Set loading timeout fallback
+  const balanceTimeout = setTimeout(() => {
+    const el = document.getElementById('balanceSpent');
+    if (el && el.textContent === 'загрузка...') el.textContent = 'нет данных';
+    const el2 = document.getElementById('balanceLimit');
+    if (el2 && el2.textContent === 'загрузка...') el2.textContent = '—';
+    const el3 = document.getElementById('balanceLeft');
+    if (el3 && el3.textContent === 'загрузка...') el3.textContent = '—';
+  }, 5000);
   try {
     const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
     const meResp = await fetch(`${CONFIG.BACKEND_URL}/api/auth/me`, {
@@ -2281,7 +2540,7 @@ async function updateUsageStats() {
   } catch(e) { /* ignore */ }
   container.innerHTML = `
     ${balanceHtml}
-    <div class="stat-card"><div class="stat-value" style="color:var(--accent-green);">$${totalCost.toFixed(4)}</div><div class="stat-label">Всего потрачено</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--accent-green);">₽${(totalCost * CONFIG.USD_TO_RUB).toFixed(2)}</div><div class="stat-label">Всего потрачено</div></div>
     <div class="stat-card"><div class="stat-value" style="color:var(--accent-blue);">${totalTokens.toLocaleString()}</div><div class="stat-label">Всего токенов</div></div>
     <div class="stat-card"><div class="stat-value" style="color:var(--accent-purple);">${STATE.analytics.length}</div><div class="stat-label">Запросов</div></div>
     <div class="stat-card"><div class="stat-value" style="color:var(--accent-orange);">${Object.keys(STATE.chats).length}</div><div class="stat-label">Чатов</div></div>
@@ -2295,39 +2554,77 @@ function initAnalyticsCharts() {
   // Will be initialized when tab is opened
 }
 
-function renderAnalytics() {
-  const totalCost = STATE.analytics.reduce((sum, a) => sum + (a.cost || 0), 0);
-  const totalTokens = STATE.analytics.reduce((sum, a) => sum + (a.inputTokens || 0) + (a.outputTokens || 0), 0);
-  const avgCost = STATE.analytics.length > 0 ? totalCost / STATE.analytics.length : 0;
+async function renderAnalytics() {
+  // BUG-ANA-01 FIX: Load analytics data from server instead of relying on STATE.analytics (localStorage)
+  const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+  let serverData = null;
+  if (token) {
+    try {
+      const resp = await fetch(`${CONFIG.BACKEND_URL}/api/analytics`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (resp.ok) serverData = await resp.json();
+    } catch(e) { console.warn('renderAnalytics: failed to load from server', e); }
+  }
+
+  // Use server data if available, fallback to local STATE.analytics
+  let totalCost, totalTokens, totalRequests, avgCost;
+  if (serverData) {
+    totalCost = serverData.user?.total_cost || 0;
+    totalTokens = (serverData.user?.tokens_in || 0) + (serverData.user?.tokens_out || 0);
+    totalRequests = serverData.user?.total_messages || STATE.analytics.length;
+    avgCost = totalRequests > 0 ? totalCost / totalRequests : 0;
+    // Store server data for chart rendering
+    STATE._serverAnalytics = serverData;
+  } else {
+    totalCost = STATE.analytics.reduce((sum, a) => sum + (a.cost || 0), 0);
+    totalTokens = STATE.analytics.reduce((sum, a) => sum + (a.inputTokens || 0) + (a.outputTokens || 0), 0);
+    totalRequests = STATE.analytics.length;
+    avgCost = totalRequests > 0 ? totalCost / totalRequests : 0;
+    STATE._serverAnalytics = null;
+  }
 
   // Summary cards
   const summary = document.getElementById('analyticsCards');
   if (summary) {
     summary.innerHTML = `
-      <div class="analytics-summary-card"><span class="analytics-summary-icon">💰</span><div><div class="analytics-summary-value" style="color:var(--accent-green);">$${totalCost.toFixed(4)}</div><div class="analytics-summary-label">Общие расходы</div></div></div>
+      <div class="analytics-summary-card"><span class="analytics-summary-icon">💰</span><div><div class="analytics-summary-value" style="color:var(--accent-green);">₽${(totalCost * CONFIG.USD_TO_RUB).toFixed(2)}</div><div class="analytics-summary-label">Общие расходы</div></div></div>
       <div class="analytics-summary-card"><span class="analytics-summary-icon">⚡</span><div><div class="analytics-summary-value" style="color:var(--accent-blue);">${totalTokens.toLocaleString()}</div><div class="analytics-summary-label">Всего токенов</div></div></div>
-      <div class="analytics-summary-card"><span class="analytics-summary-icon">📊</span><div><div class="analytics-summary-value" style="color:var(--accent-purple);">${STATE.analytics.length}</div><div class="analytics-summary-label">Запросов</div></div></div>
-      <div class="analytics-summary-card"><span class="analytics-summary-icon">📈</span><div><div class="analytics-summary-value" style="color:var(--accent-orange);">$${avgCost.toFixed(4)}</div><div class="analytics-summary-label">Средняя стоимость</div></div></div>
+      <div class="analytics-summary-card"><span class="analytics-summary-icon">📊</span><div><div class="analytics-summary-value" style="color:var(--accent-purple);">${totalRequests.toLocaleString()}</div><div class="analytics-summary-label">Запросов</div></div></div>
+      <div class="analytics-summary-card"><span class="analytics-summary-icon">📈</span><div><div class="analytics-summary-value" style="color:var(--accent-orange);">₽${(avgCost * CONFIG.USD_TO_RUB).toFixed(4)}</div><div class="analytics-summary-label">Средняя стоимость</div></div></div>
     `;
   }
 
-  // Charts
+  // Charts (now use server data if available)
   renderCostChart();
   renderModelsChart();
 
-  // Table
+  // Table — use server chat data if available
   const tbody = document.getElementById('analyticsTableBody');
   if (tbody) {
-    const recent = STATE.analytics.slice(-20).reverse();
-    tbody.innerHTML = recent.map(a => `
-      <tr>
-        <td>${new Date(a.date).toLocaleDateString('ru-RU')}</td>
-        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(a.query)}</td>
-        <td>${CONFIG.MODELS[a.model]?.name || a.model}</td>
-        <td>${((a.inputTokens || 0) + (a.outputTokens || 0)).toLocaleString()}</td>
-        <td style="color:var(--accent-green);">$${(a.cost || 0).toFixed(6)}</td>
-      </tr>
-    `).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:20px;">Нет данных</td></tr>';
+    if (serverData?.chats?.length > 0) {
+      const recent = serverData.chats.slice(0, 20);
+      tbody.innerHTML = recent.map(c => `
+        <tr>
+          <td>${new Date(c.created_at).toLocaleDateString('ru-RU')}</td>
+          <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.title || '')}</td>
+          <td>${c.model || '—'}</td>
+          <td>${c.messages || 0} сообщ.</td>
+          <td style="color:var(--accent-green);">₽${((c.cost || 0) * CONFIG.USD_TO_RUB).toFixed(4)}</td>
+        </tr>
+      `).join('');
+    } else {
+      const recent = STATE.analytics.slice(-20).reverse();
+      tbody.innerHTML = recent.map(a => `
+        <tr>
+          <td>${new Date(a.date).toLocaleDateString('ru-RU')}</td>
+          <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(a.query)}</td>
+          <td>${CONFIG.MODELS[a.model]?.name || a.model}</td>
+          <td>${((a.inputTokens || 0) + (a.outputTokens || 0)).toLocaleString()}</td>
+          <td style="color:var(--accent-green);">₽${((a.cost || 0) * CONFIG.USD_TO_RUB).toFixed(4)}</td>
+        </tr>
+      `).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:20px;">Нет данных</td></tr>';
+    }
   }
 }
 
@@ -2335,12 +2632,20 @@ function renderCostChart() {
   const canvas = document.getElementById('costChart');
   if (!canvas || typeof Chart === 'undefined') return;
 
-  // Group by day
+  // BUG-ANA-01 FIX: Use server daily data if available
   const byDay = {};
-  STATE.analytics.forEach(a => {
-    const day = new Date(a.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
-    byDay[day] = (byDay[day] || 0) + (a.cost || 0);
-  });
+  if (STATE._serverAnalytics?.daily) {
+    // Server returns { 'YYYY-MM-DD': { cost, requests } }
+    Object.entries(STATE._serverAnalytics.daily).forEach(([dateStr, dayData]) => {
+      const day = new Date(dateStr).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+      byDay[day] = (byDay[day] || 0) + (dayData.cost || 0);
+    });
+  } else {
+    STATE.analytics.forEach(a => {
+      const day = new Date(a.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+      byDay[day] = (byDay[day] || 0) + (a.cost || 0);
+    });
+  }
 
   const labels = Object.keys(byDay).slice(-7);
   const data = labels.map(l => byDay[l]);
@@ -2355,7 +2660,7 @@ function renderCostChart() {
     data: {
       labels: labels.length > 0 ? labels : ['Нет данных'],
       datasets: [{
-        label: 'Стоимость ($)',
+        label: 'Стоимость (₽)',
         data: data.length > 0 ? data : [0],
         borderColor: '#818cf8',
         backgroundColor: 'rgba(129,140,248,0.1)',
@@ -2370,7 +2675,7 @@ function renderCostChart() {
       plugins: { legend: { display: false } },
       scales: {
         x: { ticks: { color: textColor }, grid: { color: gridColor } },
-        y: { ticks: { color: textColor, callback: v => '$' + v.toFixed(4) }, grid: { color: gridColor } }
+        y: { ticks: { color: textColor, callback: v => '₽' + (v * CONFIG.USD_TO_RUB).toFixed(2) }, grid: { color: gridColor } }
       }
     }
   });
@@ -2380,11 +2685,22 @@ function renderModelsChart() {
   const canvas = document.getElementById('modelChart');
   if (!canvas || typeof Chart === 'undefined') return;
 
+  // BUG-ANA-01 FIX: Build model usage from server chat data
   const byModel = {};
-  STATE.analytics.forEach(a => {
-    const name = CONFIG.MODELS[a.model]?.name || a.model;
-    byModel[name] = (byModel[name] || 0) + (a.cost || 0);
-  });
+  if (STATE._serverAnalytics?.chats?.length > 0) {
+    STATE._serverAnalytics.chats.forEach(c => {
+      if (c.cost > 0) {
+        const modelKey = c.model || 'unknown';
+        const name = CONFIG.MODELS[modelKey]?.name || modelKey || 'Неизвестно';
+        byModel[name] = (byModel[name] || 0) + (c.cost || 0);
+      }
+    });
+  } else {
+    STATE.analytics.forEach(a => {
+      const name = CONFIG.MODELS[a.model]?.name || a.model;
+      byModel[name] = (byModel[name] || 0) + (a.cost || 0);
+    });
+  }
 
   const labels = Object.keys(byModel);
   const data = Object.values(byModel);
@@ -2416,7 +2732,7 @@ function renderModelsChart() {
 function exportAnalytics() {
   const csv = ['Дата,Запрос,Модель,Токены,Стоимость'];
   STATE.analytics.forEach(a => {
-    csv.push(`"${new Date(a.date).toLocaleDateString('ru-RU')}","${a.query}","${a.model}","${(a.inputTokens||0)+(a.outputTokens||0)}","$${(a.cost||0).toFixed(6)}"`);
+    csv.push(`"${new Date(a.date).toLocaleDateString('ru-RU')}","${a.query}","${a.model}","${(a.inputTokens||0)+(a.outputTokens||0)}","₽${((a.cost||0)*CONFIG.USD_TO_RUB).toFixed(4)}"`);
   });
   downloadFile('analytics.csv', csv.join('\n'), 'text/csv');
   showToast('Аналитика экспортирована', 'success');
@@ -2444,8 +2760,20 @@ function renderAgents() {
       </div>
       <p>${a.desc}</p>
       <div class="agent-tools">🔧 ${a.tools}</div>
+      <button class="btn-primary" style="margin-top:10px;width:100%;font-size:13px;" onclick="useAgent('${escapeHtml(a.name)}', '${escapeHtml(a.prompt || a.desc)}')"> Использовать</button>
     </div>
   `).join('');
+}
+
+function useAgent(name, prompt) {
+  switchTab('chat');
+  const input = document.getElementById('chatInput');
+  if (input) {
+    input.value = `[${name}] ${prompt}`;
+    autoResizeInput(input);
+    input.focus();
+  }
+  showToast(`Агент "${name}" загружен`, 'success');
 }
 
 // ── Templates ──────────────────────────────────────────────────
@@ -2507,33 +2835,37 @@ function renderCanvases() {
 
 function createCanvas() {
   document.getElementById('canvasGrid').classList.add('hidden');
-  document.getElementById('canvasGrid').classList.remove('hidden');
   document.getElementById('canvasTitleInput').value = '';
   document.getElementById('canvasContent').value = '';
-  document.getElementById('canvasGrid').setAttribute('data-index', '-1');
+  document.getElementById('canvasTypeSelect').value = 'text';
+  const editor = document.getElementById('canvasEditor');
+  if (editor) { editor.style.display = 'block'; editor.setAttribute('data-index', '-1'); }
+  document.getElementById('canvasTitleInput').focus();
 }
 
 function openCanvas(index) {
   const canvas = STATE.canvases[index];
   if (!canvas) return;
   document.getElementById('canvasGrid').classList.add('hidden');
-  document.getElementById('canvasGrid').classList.remove('hidden');
   document.getElementById('canvasTitleInput').value = canvas.title;
   document.getElementById('canvasContent').value = canvas.content;
-  document.getElementById('canvasTypeSelect').value = canvas.type;
-  document.getElementById('canvasGrid').setAttribute('data-index', index);
+  document.getElementById('canvasTypeSelect').value = canvas.type || 'text';
+  const editor = document.getElementById('canvasEditor');
+  if (editor) { editor.style.display = 'block'; editor.setAttribute('data-index', index); }
 }
 
 function closeCanvasEditor() {
   document.getElementById('canvasGrid').classList.remove('hidden');
-  document.getElementById('canvasGrid').classList.add('hidden');
+  const editor = document.getElementById('canvasEditor');
+  if (editor) editor.style.display = 'none';
 }
 
 function saveCanvas() {
   const title = document.getElementById('canvasTitleInput').value.trim() || 'Без названия';
   const content = document.getElementById('canvasContent').value;
   const type = document.getElementById('canvasTypeSelect').value;
-  const index = parseInt(document.getElementById('canvasGrid').getAttribute('data-index'));
+  const editor = document.getElementById('canvasEditor');
+  const index = parseInt(editor ? editor.getAttribute('data-index') : '-1');
 
   const canvas = { title, content, type, updatedAt: new Date().toISOString() };
   if (index === -1) {
@@ -2928,6 +3260,7 @@ function setupKeyboardShortcuts() {
         case 'n': e.preventDefault(); newChat(); break;
         case ',': e.preventDefault(); openSettings(); break;
         case '/': e.preventDefault(); document.getElementById('chatInput')?.focus(); break;
+        case 'b': e.preventDefault(); toggleSidebar(); break; // FIX BUG-005: Ctrl+B toggles sidebar
       }
     }
     if (e.key === 'Escape') {
@@ -3089,4 +3422,299 @@ function showChatContextMenu(chatId, event) {
   menu.style.cssText = `position:fixed;top:${rect.bottom+4}px;left:${Math.min(rect.left,window.innerWidth-180)}px;z-index:9999;`;
   document.body.appendChild(menu);
   setTimeout(() => document.addEventListener('click', () => menu.remove(), { once: true }), 10);
+}
+
+// Alias for backward compatibility
+function toggleThemeBtn() { toggleTheme(); }
+
+
+
+
+
+// ── Agent Thumbnail in Chat (Manus-style) ─────────────────────
+let _agentStepCount = 0;
+let _agentTotalSteps = 0;
+
+function resetAgentStepCounter() {
+  _agentStepCount = 0;
+  _agentTotalSteps = 0;
+}
+
+function addAgentThumbnailToChat(screenshotB64, toolName, description) {
+  _agentStepCount++;
+  const messagesEl = document.getElementById('messages');
+  if (!messagesEl) return;
+
+  // Remove previous thumbnail (keep only latest)
+  const prev = document.getElementById('agentThumbnailLive');
+  if (prev) prev.remove();
+
+  const toolIcons = {
+    'browser_navigate': '🌐',
+    'browser_check_site': '🔍',
+    'browser_get_text': '📝',
+    'browser_get_links': '🔗',
+    'browser_screenshot_check': '📸',
+    'ssh_execute': '💻',
+    'code_interpreter': '⚡',
+    'file_write': '📄',
+    'file_read': '📖',
+    'generate_file': '📎'
+  };
+  const icon = toolIcons[toolName] || '🔧';
+  const desc = description || toolName || 'Выполняется...';
+  const stepText = _agentTotalSteps > 0 
+    ? `${_agentStepCount} / ${_agentTotalSteps}` 
+    : `${_agentStepCount}`;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'agent-thumbnail-wrap';
+  wrap.id = 'agentThumbnailLive';
+
+  if (screenshotB64) {
+    wrap.innerHTML = `
+      <div class="agent-thumbnail" onclick="openAgentComputer()">
+        <img src="data:image/png;base64,${screenshotB64}" alt="Agent screen" />
+      </div>
+      <div class="agent-thumbnail-info">
+        <div class="agent-thumb-icon">${icon}</div>
+        <div class="agent-thumb-text">${desc}</div>
+        <div class="agent-thumb-step">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+          ${stepText}
+        </div>
+      </div>
+    `;
+  } else {
+    // SSH/code — show terminal-style thumbnail
+    wrap.innerHTML = `
+      <div class="agent-thumbnail" onclick="openAgentComputer()" style="background:#1a1a2e;display:flex;align-items:center;justify-content:center;">
+        <div style="font-family:var(--mono);font-size:10px;color:#4ade80;padding:8px;line-height:1.4;overflow:hidden;width:100%;height:100%;">
+          <div style="color:#6b7280;">$ ${toolName || 'agent'}</div>
+          <div style="color:#4ade80;margin-top:2px;">${(desc || '').substring(0, 80)}</div>
+          <div style="margin-top:4px;"><span style="display:inline-block;width:6px;height:10px;background:#4ade80;animation:blink 1s step-end infinite;"></span></div>
+        </div>
+      </div>
+      <div class="agent-thumbnail-info">
+        <div class="agent-thumb-icon">${icon}</div>
+        <div class="agent-thumb-text">${desc}</div>
+        <div class="agent-thumb-step">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+          ${stepText}
+        </div>
+      </div>
+    `;
+  }
+
+  messagesEl.appendChild(wrap);
+  scrollToBottom();
+}
+
+function openAgentComputer() {
+  const panel = document.getElementById('agentComputer');
+  if (panel && panel.classList.contains('hidden')) {
+    panel.classList.remove('hidden');
+    STATE.agentComputerVisible = true;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// ══ DEV MODE ══════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+
+// Dev Mode state
+STATE.devMode = false;
+STATE.devModel = 'claude-sonnet';
+STATE.devModels = {};
+
+// Initialize Dev Mode UI (called from initApp)
+function initDevMode() {
+  const isAdmin = STATE.currentUser?.role === 'admin';
+  const wrap = document.getElementById('devModeWrap');
+  if (!wrap) return;
+  
+  if (isAdmin) {
+    wrap.style.display = 'flex';
+    // Load saved dev mode state
+    const savedDevMode = localStorage.getItem('sa_dev_mode') === 'true';
+    const savedDevModel = localStorage.getItem('sa_dev_model') || 'claude-sonnet';
+    STATE.devMode = savedDevMode;
+    STATE.devModel = savedDevModel;
+    
+    const toggle = document.getElementById('devModeToggle');
+    if (toggle) toggle.checked = savedDevMode;
+    
+    if (savedDevMode) {
+      activateDevModeUI();
+    }
+    
+    // Fetch dev models from backend
+    fetchDevModels();
+  } else {
+    wrap.style.display = 'none';
+  }
+}
+
+async function fetchDevModels() {
+  try {
+    const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+    const resp = await fetch(`${CONFIG.BACKEND_URL}/api/settings`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.dev_models) {
+        STATE.devModels = data.dev_models;
+        renderDevModelDropdown();
+      }
+      // Apply saved dev settings from backend
+      if (data.settings?.dev_mode) {
+        STATE.devMode = true;
+        const toggle = document.getElementById('devModeToggle');
+        if (toggle) toggle.checked = true;
+        activateDevModeUI();
+      }
+      if (data.settings?.dev_model) {
+        STATE.devModel = data.settings.dev_model;
+      }
+      updateDevModelLabel();
+    }
+  } catch(e) {
+    console.warn('Failed to fetch dev models', e);
+  }
+}
+
+function toggleDevMode(enabled) {
+  STATE.devMode = enabled;
+  localStorage.setItem('sa_dev_mode', enabled);
+  
+  if (enabled) {
+    activateDevModeUI();
+    showToast('⚡ Dev Mode активирован — полный доступ к SSH, браузеру и файлам', 'success');
+  } else {
+    deactivateDevModeUI();
+    showToast('Dev Mode выключен', 'info');
+  }
+  
+  // Save to backend
+  const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+  if (token) {
+    fetch(`${CONFIG.BACKEND_URL}/api/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ dev_mode: enabled, dev_model: STATE.devModel })
+    }).catch(() => {});
+  }
+}
+
+function activateDevModeUI() {
+  document.body.classList.add('dev-mode-active');
+  const devModelSel = document.getElementById('devModelSel');
+  if (devModelSel) devModelSel.style.display = 'block';
+  const label = document.getElementById('devModeLabel');
+  if (label) label.textContent = 'DEV ⚡';
+  // Hide regular model selector when dev mode is on
+  const regularModel = document.querySelector('.model-sel-wrap');
+  if (regularModel) regularModel.style.display = 'none';
+  updateDevModelLabel();
+}
+
+function deactivateDevModeUI() {
+  document.body.classList.remove('dev-mode-active');
+  const devModelSel = document.getElementById('devModelSel');
+  if (devModelSel) devModelSel.style.display = 'none';
+  const label = document.getElementById('devModeLabel');
+  if (label) label.textContent = 'DEV';
+  // Show regular model selector
+  const regularModel = document.querySelector('.model-sel-wrap');
+  if (regularModel) regularModel.style.display = '';
+}
+
+function renderDevModelDropdown() {
+  const menu = document.getElementById('devModelMenu');
+  if (!menu) return;
+  
+  const powerStars = (n) => '⭐'.repeat(n);
+  
+  menu.innerHTML = Object.entries(STATE.devModels).map(([id, model]) => {
+    const isActive = STATE.devModel === id;
+    return `
+      <div class="model-dropdown-item ${isActive ? 'active' : ''}" 
+           data-dev-model-id="${id}"
+           style="cursor:pointer;${isActive ? 'border-left:3px solid var(--orange);' : ''}">
+        <div class="model-dropdown-info" style="flex:1">
+          <div class="model-dropdown-name" style="font-weight:700;color:${isActive ? 'var(--orange)' : 'var(--text)'}">${model.name}</div>
+          <div class="model-dropdown-desc" style="font-size:11px;color:var(--text3)">${model.description}</div>
+        </div>
+        <div style="text-align:right;font-size:11px;line-height:1.3">
+          <div style="color:var(--text3)">${powerStars(model.power)}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  // Event delegation for model selection
+  menu.querySelectorAll('.model-dropdown-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const modelId = item.getAttribute('data-dev-model-id');
+      if (modelId) selectDevModel(modelId);
+    });
+  });
+}
+
+function selectDevModel(modelId) {
+  STATE.devModel = modelId;
+  localStorage.setItem('sa_dev_model', modelId);
+  
+  updateDevModelLabel();
+  renderDevModelDropdown();
+  
+  // Close dropdown
+  const menu = document.getElementById('devModelMenu');
+  if (menu) menu.classList.remove('open');
+  
+  const modelName = STATE.devModels[modelId]?.name || modelId;
+  showToast(`Модель: ${modelName}`, 'info');
+  
+  // Save to backend
+  const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+  if (token) {
+    fetch(`${CONFIG.BACKEND_URL}/api/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ dev_mode: true, dev_model: modelId })
+    }).catch(() => {});
+  }
+}
+
+function updateDevModelLabel() {
+  const label = document.getElementById('devModelLabel');
+  if (label && STATE.devModels[STATE.devModel]) {
+    label.textContent = STATE.devModels[STATE.devModel].name;
+  }
+  // Also update the main model selector button to show dev model name
+  if (STATE.devMode) {
+    const mainLabel = document.getElementById('modelSelLabel');
+    if (mainLabel && STATE.devModels[STATE.devModel]) {
+      mainLabel.textContent = STATE.devModels[STATE.devModel].name;
+    }
+  }
+}
+
+function toggleDevModelDropdown() {
+  const menu = document.getElementById('devModelMenu');
+  if (!menu) return;
+  menu.classList.toggle('open');
+  // Close on outside click
+  if (menu.classList.contains('open')) {
+    setTimeout(() => {
+      document.addEventListener('click', function closeDevMenu(e) {
+        if (!e.target.closest('#devModelSel')) {
+          menu.classList.remove('open');
+          document.removeEventListener('click', closeDevMenu);
+        }
+      });
+    }, 10);
+  }
 }

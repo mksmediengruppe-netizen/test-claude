@@ -1218,11 +1218,14 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 .chart-card {
   background: var(--bg2); border: 1px solid var(--border);
   border-radius: var(--radius-lg); padding: 20px;
-  min-height: 280px;
+  height: 300px; /* BUG-CSS-01 FIX: fixed height prevents Chart.js canvas expanding infinitely */
+  position: relative;
+  overflow: hidden;
 }
 .chart-card canvas {
   width: 100% !important;
   height: 240px !important;
+  max-height: 240px !important;
 }
 .chart-title { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
 

@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = os.environ.get("DATA_DIR", "/var/www/super-agent/backend/data")
+DATA_DIR = os.environ.get("DATA_DIR", "/var/www/claude/backend/data_dev")
 DB_SQLITE = os.path.join(DATA_DIR, "database.sqlite")
 DB_JSON_LEGACY = os.path.join(DATA_DIR, "database.json")
 
