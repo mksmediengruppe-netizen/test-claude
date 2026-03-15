@@ -1,11 +1,31 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Backups
 *.bak
 *.bak_*
+*.bak2
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
 .env
+
+# Uploads & generated data
 backend/uploads/
 backend/data_dev/
 backend/generated/
 backend/terminal_full_output/
+backend/data/
+backend/database.db
+
+# Logs
 *.log
+logs/
+
+# OS
 .DS_Store
+Thumbs.db
