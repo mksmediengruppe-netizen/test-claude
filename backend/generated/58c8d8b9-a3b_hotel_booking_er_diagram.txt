@@ -1,0 +1,240 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    HOTEL BOOKING SYSTEM - DATABASE SCHEMA                     ║
+║                              ER DIAGRAM                                        ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────┐
+│    COUNTRIES    │
+├─────────────────┤
+│ country_id  PK  │
+│ country_code UK │
+│ country_name    │
+└────────┬────────┘
+         │ 1
+         │
+         │ N
+┌────────▼────────┐
+│     CITIES      │
+├─────────────────┤
+│ city_id      PK │
+│ country_id   FK │
+│ city_name       │
+│ latitude        │
+│ longitude       │
+└────────┬────────┘
+         │ 1
+         │
+         │ N
+┌────────▼────────┐         ┌─────────────────┐
+│     HOTELS      │◄────────│     USERS       │
+├─────────────────┤  owner  ├─────────────────┤
+│ hotel_id     PK │◄────────│ user_id      PK │
+│ owner_id     FK │         │ email        UK │
+│ city_id      FK │         │ first_name      │
+│ hotel_name      │         │ last_name       │
+│ description     │         │ role            │
+│ address         │         │ is_active       │
+│ star_rating     │         └────────┬────────┘
+│ check_in_time   │                  │
+│ check_out_time  │         ┌────────▼────────┐
+│ is_active       │         │    BOOKINGS     │
+└────────┬────────┘         ├─────────────────┤
+         │                  │ booking_id   PK │
+         │ 1                │ booking_ref  UK │
+         │                  │ user_id      FK │
+         │ N                │ hotel_id     FK │
+         │                  │ check_in_date   │
+┌────────▼────────┐         │ check_out_date  │
+│     ROOMS       │         │ status          │
+├─────────────────┤         │ total_amount    │
+│ room_id      PK │         │ payment_status  │
+│ hotel_id     FK │         └────────┬────────┘
+│ room_type_id FK│                  │
+│ room_number     │         ┌────────▼────────┐         ┌─────────────────┐
+│ base_price      │         │ BOOKING_ROOMS   │         │    PAYMENTS     │
+│ max_occupancy   │         ├─────────────────┤         ├─────────────────┤
+│ has_balcony     │         │ booking_rm_id PK│         │ payment_id   PK │
+│ has_sea_view    │         │ booking_id   FK │◄────────│ booking_id   FK │
+│ pet_friendly    │         │ room_id      FK │         │ user_id      FK │
+│ is_active       │         │ price_per_night │         │ amount          │
+└────────┬────────┘         │ nights_count    │         │ payment_method  │
+         │                  │ subtotal        │         │ status          │
+         │                  └─────────────────┘         │ transaction_id  │
+         │                                                  └─────────────────┘
+         │
+         │ 1
+         │
+         │ N
+┌────────▼────────┐
+│   ROOM_TYPES    │
+├─────────────────┤
+│ room_type_id PK │
+│ type_name       │
+│ description     │
+│ base_capacity   │
+│ max_capacity    │
+└─────────────────┘
+
+
+┌─────────────────┐         ┌─────────────────┐
+│    AMENITIES    │         │     REVIEWS     │
+├─────────────────┤         ├─────────────────┤
+│ amenity_id  PK  │◄────────│ review_id    PK │
+│ amenity_name UK │         │ booking_id   FK │
+│ amenity_icon    │         │ user_id      FK │
+│ category        │         │ hotel_id     FK │
+└─────────────────┘         │ rating          │
+         │                  │ cleanliness_rtg │
+         │                  │ location_rtg    │
+         │                  │ service_rtg     │
+         │                  │ value_rtg       │
+         │                  │ comment         │
+         │                  │ is_verified     │
+         │                  └─────────────────┘
+         │
+         │ N
+         │
+┌────────▼────────┐
+│ HOTEL_AMENITIES │
+├─────────────────┤
+│ h_amenity_id PK │
+│ hotel_id     FK │
+│ amenity_id   FK │
+│ is_free        │
+└─────────────────┘
+
+
+┌─────────────────┐         ┌─────────────────┐
+│  HOTEL_IMAGES   │         │   ROOM_IMAGES   │
+├─────────────────┤         ├─────────────────┤
+│ image_id     PK │         │ image_id     PK │
+│ hotel_id     FK │         │ room_id      FK │
+│ image_url       │         │ image_url       │
+│ is_primary      │         │ is_primary      │
+│ display_order   │         │ display_order   │
+└─────────────────┘         └─────────────────┘
+
+
+┌─────────────────┐
+│  ROOM_PRICING   │
+├─────────────────┤
+│ pricing_id   PK │
+│ room_id      FK │
+│ start_date      │
+│ end_date        │
+│ price           │
+│ is_active       │
+└─────────────────┘
+
+
+┌─────────────────┐
+│  ACTIVITY_LOG   │
+├─────────────────┤
+│ log_id       PK │
+│ user_id      FK │
+│ entity_type     │
+│ entity_id       │
+│ action          │
+│ old_values      │
+│ new_values      │
+│ created_at      │
+└─────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                              LEGEND / УСЛОВНЫЕ ОБОЗНАЧЕНИЯ
+═══════════════════════════════════════════════════════════════════════════════
+
+  PK  - Primary Key (Первичный ключ)
+  FK  - Foreign Key (Внешний ключ)
+  UK  - Unique Key (Уникальный ключ)
+  1   - One (Один)
+  N   - Many (Много)
+
+  ┌──────┐
+  │  1   │─── One-to-Many relationship (Один-ко-Многим)
+  └──────┘
+      │
+      │ N
+      ▼
+  ┌──────┐
+  │  N   │
+  └──────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                            RELATIONSHIP TYPES / ТИПЫ СВЯЗЕЙ
+═══════════════════════════════════════════════════════════════════════════════
+
+  USERS ──(1:N)──> BOOKINGS      Один пользователь может иметь много бронирований
+  USERS ──(1:N)──> REVIEWS       Один пользователь может писать много отзывов
+  USERS ──(1:N)──> PAYMENTS      Один пользователь может делать много платежей
+  USERS ──(1:N)──> HOTELS        Один пользователь может владеть многими отелями
+
+  HOTELS ──(1:N)──> ROOMS        Один отель имеет много номеров
+  HOTELS ──(1:N)──> BOOKINGS     Один отель принимает много бронирований
+  HOTELS ──(1:N)──> REVIEWS      Один отель может иметь много отзывов
+  HOTELS ──(1:N)──> HOTEL_AMENITIES  Один отель имеет много удобств
+
+  ROOMS ──(N:1)──> ROOM_TYPES    Много номеров относятся к одному типу
+  ROOMS ──(1:N)──> BOOKING_ROOMS  Один номер может быть в многих бронированиях
+
+  BOOKINGS ──(1:N)──> BOOKING_ROOMS  Одно бронирование может включать много номеров
+  BOOKINGS ──(1:N)──> PAYMENTS       Одно бронирование может иметь много платежей
+  BOOKINGS ──(1:1)──> REVIEWS        Одно бронирование = один отзыв
+
+  COUNTRIES ──(1:N)──> CITIES      Одна страна имеет много городов
+  CITIES ──(1:N)──> HOTELS         Один город имеет много отелей
+
+  AMENITIES ──(1:N)──> HOTEL_AMENITIES  Одно удобство может быть во многих отелях
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                         TABLE CATEGORIES / КАТЕГОРИИ ТАБЛИЦ
+═══════════════════════════════════════════════════════════════════════════════
+
+  📋 REFERENCE TABLES (Справочники):
+     • countries    • cities      • room_types    • amenities
+
+  👥 CORE TABLES (Основные):
+     • users        • hotels      • rooms         • bookings
+     • booking_rooms• payments    • reviews
+
+  🔗 JUNCTION TABLES (Связующие):
+     • hotel_amenities • room_amenities • hotel_images • room_images
+
+  💰 PRICING & LOGS (Ценообразование и логи):
+     • room_pricing   • activity_log
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                         INDEX SUMMARY / СВОДКА ПО ИНДЕКСАМ
+═══════════════════════════════════════════════════════════════════════════════
+
+  PRIMARY KEYS:      15 (по одной на каждую таблицу)
+  UNIQUE INDEXES:    6  (email, booking_ref, country_code, amenity_name, etc.)
+  FOREIGN KEYS:      20+ (все связи между таблицами)
+  REGULAR INDEXES:   25+ (для оптимизации поиска и сортировки)
+  FULLTEXT INDEXES:  1  (поиск по названию и описанию отеля)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                         VIEWS & PROCEDURES / ПРЕДСТАВЛЕНИЯ И ПРОЦЕДУРЫ
+═══════════════════════════════════════════════════════════════════════════════
+
+  VIEWS (Представления):
+     • hotel_stats       - Статистика отеля
+     • available_rooms  - Список доступных номеров
+
+  STORED PROCEDURES (Хранимые процедуры):
+     • check_room_availability()  - Проверка доступности номеров
+     • get_booking_stats()        - Статистика бронирований
+
+  TRIGGERS (Триггеры):
+     • before_booking_insert  - Автогенерация кода бронирования
+     • after_booking_update   - Логирование изменений
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                              END OF DIAGRAM
+═══════════════════════════════════════════════════════════════════════════════

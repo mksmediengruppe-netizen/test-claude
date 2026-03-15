@@ -183,6 +183,7 @@ _DEFAULT_DB = {
                 "variant": "premium",
                 "chat_model": "qwen3",
                 "enhanced_mode": False,
+                "self_check_level": "none",
                 "design_pro": False,
                 "language": "ru"
             }
@@ -397,7 +398,7 @@ def update_settings():
     db = db_read()
     user = db["users"].get(request.user_id, {})
 
-    allowed_keys = {"variant", "chat_model", "enhanced_mode", "design_pro", "language",
+    allowed_keys = {"variant", "chat_model", "enhanced_mode", "self_check_level", "design_pro", "language",
                     "ssh_host", "ssh_user", "ssh_password", "github_token", "n8n_url", "n8n_api_key"}
 
     settings = user.get("settings", {})
@@ -972,7 +973,7 @@ ORCHESTRATOR_PROMPT = """Ты — умный маршрутизатор зада
 - "создай таблицу" / "сделай таблицу" БЕЗ уточнения данных → "file" (таблица = документ)
 - "сделай таблицу сравнения тарифов" / "сделай таблицу с расписанием" / "сделай таблицу продаж" → "file" (таблица = документ)
 - "напиши коммерческое предложение" / "напиши бизнес-план" / "напиши техническое задание" → "file" (бизнес-документ)
-Отвечай ТОЛЬКО JSON: {"mode": "chat|file|deploy|research|data", "confidence": 0.0-1.0}
+Отвечай ТОЛЬКО JSON: {{"mode": "chat|file|deploy|research|data", "confidence": 0.0-1.0}}
 Последние сообщения чата (контекст):
 {history}
 Сообщение пользователя: {message}
@@ -1109,6 +1110,7 @@ def send_message(chat_id):
     user_settings = db["users"].get(request.user_id, {}).get("settings", {})
     variant = user_settings.get("variant", "premium")
     enhanced = user_settings.get("enhanced_mode", False)
+    self_check_level = user_settings.get("self_check_level", "none")  # none | light | medium | deep
     chat_model = user_settings.get("chat_model", "qwen3")
 
     # Get SSH credentials from user settings
@@ -1227,7 +1229,7 @@ def send_message(chat_id):
             active_model_name = agent_model_name
         else:
             active_model_name = routed_model_name
-        yield f"data: {json.dumps({'type': 'meta', 'variant': variant, 'model': active_model_name, 'enhanced': enhanced, 'agent_mode': (is_agent_task and has_ssh) or is_lite_agent, 'tier': routed_tier, 'complexity': routed_complexity})}\n\n"
+        yield f"data: {json.dumps({'type': 'meta', 'variant': variant, 'model': active_model_name, 'enhanced': enhanced, 'self_check_level': self_check_level, 'agent_mode': (is_agent_task and has_ssh) or is_lite_agent, 'tier': routed_tier, 'complexity': routed_complexity})}\n\n"
 
         if is_lite_agent:
             # ═══ LITE AGENT MODE: File/Image generation without SSH ═══
@@ -1462,6 +1464,103 @@ def send_message(chat_id):
                 error_msg = f"❌ Ошибка API: {str(e)}"
                 yield f"data: {json.dumps({'type': 'error', 'text': error_msg})}\n\n"
                 full_response = error_msg
+
+            # ═══ SELF-CHECK: проверка ответа вторым AI ═══
+            if self_check_level != "none" and full_response and "❌" not in full_response[:10]:
+                SELF_CHECK_MODELS = {
+                    "light":  {"model": "openai/gpt-4.1-nano", "name": "GPT-4.1 Nano", "input_price": 0.10, "output_price": 0.40},
+                    "medium": None,  # same model as main
+                    "deep":   {"model": "anthropic/claude-sonnet-4", "name": "Claude Sonnet 4", "input_price": 3.00, "output_price": 15.00},
+                }
+                check_config = SELF_CHECK_MODELS.get(self_check_level)
+                if self_check_level == "medium":
+                    check_model_id = active_model
+                    check_model_name = "Same Model"
+                    check_input_price = routed.get("input_price", 0.10)
+                    check_output_price = routed.get("output_price", 0.40)
+                elif check_config:
+                    check_model_id = check_config["model"]
+                    check_model_name = check_config["name"]
+                    check_input_price = check_config["input_price"]
+                    check_output_price = check_config["output_price"]
+                else:
+                    check_model_id = None
+
+                if check_model_id:
+                    yield f"data: {json.dumps({'type': 'self_check', 'status': 'started', 'level': self_check_level, 'checker': check_model_name})}\n\n"
+
+                    check_prompt = f"""Ты — критик и верификатор AI-ответов. Проверь следующий ответ на:
+1. Фактические ошибки и галлюцинации
+2. Логические противоречия
+3. Неполноту ответа
+4. Ошибки в коде (если есть код)
+
+Вопрос пользователя: {user_message}
+
+Ответ AI:
+{full_response[:8000]}
+
+Если ответ хороший — верни его как есть.
+Если нашёл ошибки — верни ИСПРАВЛЕННУЮ версию полного ответа.
+Не добавляй комментарии о проверке, верни только финальный ответ."""
+
+                    check_messages = [{"role": "user", "content": check_prompt}]
+                    check_payload = {
+                        "model": check_model_id,
+                        "messages": check_messages,
+                        "temperature": 0.1,
+                        "max_tokens": 16000,
+                        "stream": True
+                    }
+
+                    try:
+                        check_resp = http_requests.post(
+                            OPENROUTER_BASE_URL,
+                            headers=headers,
+                            json=check_payload,
+                            stream=True,
+                            timeout=120
+                        )
+                        check_resp.raise_for_status()
+
+                        checked_response = ""
+                        # Signal frontend to clear previous response and show checked version
+                        yield f"data: {json.dumps({'type': 'self_check_replace', 'status': 'streaming'})}\n\n"
+
+                        for line in check_resp.iter_lines():
+                            if not line:
+                                continue
+                            line_str = line.decode("utf-8", errors="replace")
+                            if not line_str.startswith("data: "):
+                                continue
+                            payload_str = line_str[6:]
+                            if payload_str.strip() == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(payload_str)
+                                choices = chunk.get("choices", [])
+                                if choices:
+                                    delta = choices[0].get("delta", {})
+                                    text = delta.get("content", "")
+                                    if text:
+                                        checked_response += text
+                                        yield f"data: {json.dumps({'type': 'self_check_content', 'text': text})}\n\n"
+                                usage = chunk.get("usage")
+                                if usage:
+                                    tokens_in += usage.get("prompt_tokens", 0)
+                                    tokens_out += usage.get("completion_tokens", 0)
+                            except json.JSONDecodeError:
+                                continue
+
+                        if checked_response.strip():
+                            full_response = checked_response
+                            yield f"data: {json.dumps({'type': 'self_check', 'status': 'done', 'level': self_check_level})}\n\n"
+                        else:
+                            yield f"data: {json.dumps({'type': 'self_check', 'status': 'kept_original', 'level': self_check_level})}\n\n"
+
+                    except Exception as e:
+                        logging.warning(f"Self-check failed: {e}")
+                        yield f"data: {json.dumps({'type': 'self_check', 'status': 'error', 'error': str(e)[:100]})}\n\n"
 
         # Calculate cost using routed model prices
         _active_input_price = routed.get("input_price", config["coding"]["input_price"])

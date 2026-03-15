@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Процесс авторизации пользователя</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        .mermaid-container {
+            overflow-x: auto;
+            padding: 20px;
+            background: #fafafa;
+            border-radius: 10px;
+            border: 1px solid #e0e0e0;
+        }
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            min-width: 1000px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Процесс авторизации пользователя</h1>
+        <p class="subtitle">Интерактивная диаграмма процесса аутентификации</p>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #90EE90;"></div>
+                <span>Начало / Успех</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #FFB6C1;"></div>
+                <span>Завершение с ошибкой</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #FFE4B5;"></div>
+                <span>Условие (Decision)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #87CEEB;"></div>
+                <span>Ввод данных</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #FFA07A;"></div>
+                <span>Ошибка</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #FF6B6B;"></div>
+                <span>Блокировка</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #98FB98;"></div>
+                <span>Успешное действие</span>
+            </div>
+        </div>
+        
+        <div class="mermaid-container">
+            <div class="mermaid">
+flowchart LR
+    START([Начало]) --> INPUT[Ввод логина и пароля]
+    INPUT --> VALIDATE{Данные<br/>заполнены?}
+    VALIDATE -->|Нет| ERROR1[Показать ошибку:<br/>Заполните все поля]
+    ERROR1 --> INPUT
+    VALIDATE -->|Да| CHECK{Пользователь<br/>существует?}
+    CHECK -->|Нет| ERROR2[Показать ошибку:<br/>Пользователь не найден]
+    ERROR2 --> INPUT
+    CHECK -->|Да| VERIFY{Пароль<br/>верный?}
+    VERIFY -->|Нет| ERROR3[Показать ошибку:<br/>Неверный пароль]
+    ERROR3 --> INPUT
+    VERIFY -->|Да| ACTIVE{Аккаунт<br/>активен?}
+    ACTIVE -->|Нет| BLOCK[Показать:<br/>Аккаунт заблокирован]
+    BLOCK --> END1([Конец])
+    ACTIVE -->|Да| SESSION[Создать сессию]
+    SESSION --> REDIRECT[Перенаправить<br/>на главную страницу]
+    REDIRECT --> END2([Успешная авторизация])
+    
+    style START fill:#90EE90,stroke:#333,stroke-width:2px
+    style END1 fill:#FFB6C1,stroke:#333,stroke-width:2px
+    style END2 fill:#90EE90,stroke:#333,stroke-width:2px
+    style VALIDATE fill:#FFE4B5,stroke:#333,stroke-width:2px
+    style CHECK fill:#FFE4B5,stroke:#333,stroke-width:2px
+    style VERIFY fill:#FFE4B5,stroke:#333,stroke-width:2px
+    style ACTIVE fill:#FFE4B5,stroke:#333,stroke-width:2px
+    style INPUT fill:#87CEEB,stroke:#333,stroke-width:2px
+    style ERROR1 fill:#FFA07A,stroke:#333,stroke-width:2px
+    style ERROR2 fill:#FFA07A,stroke:#333,stroke-width:2px
+    style ERROR3 fill:#FFA07A,stroke:#333,stroke-width:2px
+    style BLOCK fill:#FF6B6B,stroke:#333,stroke-width:2px
+    style SESSION fill:#98FB98,stroke:#333,stroke-width:2px
+    style REDIRECT fill:#98FB98,stroke:#333,stroke-width:2px
+            </div>
+        </div>
+    </div>
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis'
+            }
+        });
+    </script>
+</body>
+</html>

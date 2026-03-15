@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Процесс авторизации пользователя</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 1200px;
+            width: 100%;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+        .mermaid {
+            display: flex;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Процесс авторизации пользователя</h1>
+        <div class="mermaid">
+flowchart LR
+    %% Стили для блоков
+    classDef startend fill:#2ecc71,stroke:#27ae60,stroke-width:3px,color:#fff;
+    classDef process fill:#3498db,stroke:#2980b9,stroke-width:2px,color:#fff;
+    classDef decision fill:#f39c12,stroke:#e67e22,stroke-width:2px,color:#fff;
+    classDef error fill:#e74c3c,stroke:#c0392b,stroke-width:2px,color:#fff;
+
+    %% Начало процесса
+    START([Начало авторизации]):::startend
+    
+    %% Ввод данных
+    INPUT[/Пользователь вводит логин и пароль/]:::process
+    
+    %% Проверка формата данных
+    CHECK_FORMAT{Данные валидны?}:::decision
+    
+    %% Ошибка формата
+    FORMAT_ERROR[Показать ошибку: некорректный формат]:::error
+    
+    %% Поиск пользователя
+    FIND_USER[Найти пользователя в базе данных]:::process
+    
+    %% Проверка существования
+    CHECK_EXISTS{Пользователь существует?}:::decision
+    
+    %% Ошибка: пользователь не найден
+    NOT_FOUND[Показать ошибку: пользователь не найден]:::error
+    
+    %% Проверка блокировки
+    CHECK_BLOCKED{Аккаунт заблокирован?}:::decision
+    
+    %% Ошибка: аккаунт заблокирован
+    BLOCKED[Показать ошибку: аккаунт заблокирован]:::error
+    
+    %% Проверка пароля
+    CHECK_PASSWORD{Пароль верен?}:::decision
+    
+    %% Ошибка: неверный пароль
+    WRONG_PASS[Показать ошибку: неверный пароль<br/>Увеличить счётчик попыток]:::process
+    
+    %% Проверка блокировки после попыток
+    CHECK_ATTEMPTS{Превышен лимит попыток?}:::decision
+    
+    %% Блокировка аккаунта
+    BLOCK_ACCOUNT[Заблокировать аккаунт временно]:::process
+    
+    %% Создание сессии
+    CREATE_SESSION[Создать сессию пользователя]:::process
+    
+    %% Генерация токена
+    GENERATE_TOKEN[Сгенерировать JWT токен]:::process
+    
+    %% Сохранение токена
+    SAVE_TOKEN[Сохранить токен в cookies/localStorage]:::process
+    
+    %% Перенаправление
+    REDIRECT[Перенаправить на главную страницу]:::process
+    
+    %% Конец процесса
+    END([Авторизация успешна]):::startend
+    
+    %% Связи
+    START --> INPUT
+    INPUT --> CHECK_FORMAT
+    
+    CHECK_FORMAT -->|Нет| FORMAT_ERROR
+    FORMAT_ERROR --> INPUT
+    
+    CHECK_FORMAT -->|Да| FIND_USER
+    FIND_USER --> CHECK_EXISTS
+    
+    CHECK_EXISTS -->|Нет| NOT_FOUND
+    NOT_FOUND --> INPUT
+    
+    CHECK_EXISTS -->|Да| CHECK_BLOCKED
+    
+    CHECK_BLOCKED -->|Да| BLOCKED
+    BLOCKED --> INPUT
+    
+    CHECK_BLOCKED -->|Нет| CHECK_PASSWORD
+    
+    CHECK_PASSWORD -->|Нет| WRONG_PASS
+    WRONG_PASS --> CHECK_ATTEMPTS
+    
+    CHECK_ATTEMPTS -->|Да| BLOCK_ACCOUNT
+    BLOCK_ACCOUNT --> INPUT
+    
+    CHECK_ATTEMPTS -->|Нет| INPUT
+    
+    CHECK_PASSWORD -->|Да| CREATE_SESSION
+    CREATE_SESSION --> GENERATE_TOKEN
+    GENERATE_TOKEN --> SAVE_TOKEN
+    SAVE_TOKEN --> REDIRECT
+    REDIRECT --> END
+        </div>
+    </div>
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true
+            }
+        });
+    </script>
+</body>
+</html>

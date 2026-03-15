@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Super Agent v6.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=20260316">
+</head>
+<body>
+
+<!-- ═══════════════════════════ LOGIN ═══════════════════════════ -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-bg">
+    <div class="login-orb orb-1"></div>
+    <div class="login-orb orb-2"></div>
+    <div class="login-orb orb-3"></div>
+  </div>
+  <div class="login-wrap">
+    <div class="login-brand">
+      <svg class="login-logo-icon" width="40" height="40" viewBox="0 0 40 40" fill="none">
+        <rect width="40" height="40" rx="10" fill="url(#lg1)"/>
+        <path d="M12 28V14l8 7 8-7v14" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <defs><linearGradient id="lg1" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse"><stop stop-color="#818cf8"/><stop offset="1" stop-color="#a855f7"/></linearGradient></defs>
+      </svg>
+      <div>
+        <div class="login-brand-name">Super Agent</div>
+        <div class="login-brand-sub">v6.0 · AI Platform</div>
+      </div>
+    </div>
+    <div class="login-card">
+      <div class="login-title">Добро пожаловать</div>
+      <div class="login-subtitle">Войдите в свой аккаунт</div>
+      <div class="login-err hidden" id="loginErr"></div>
+      <div class="form-group">
+        <label class="form-label">Логин</label>
+        <input type="text" class="form-input" id="loginUser" placeholder="admin" value="admin">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Пароль</label>
+        <div class="input-wrap">
+          <input type="password" class="form-input" id="loginPass" placeholder="••••••••" value="admin">
+          <button class="input-eye" id="eyeBtn" onclick="toggleEye()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <button class="login-btn" id="loginBtn" onclick="doLogin()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Войти
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ APP ═══════════════════════════ -->
+<div class="app hidden" id="appRoot">
+
+  <!-- Sidebar overlay (mobile) -->
+  <div class="sidebar-overlay hidden" id="sbOverlay" onclick="closeMobileSidebar()"></div>
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside class="sidebar" id="sidebar" data-open="true">
+    <div class="sb-header">
+      <div class="sb-logo">
+        <svg width="26" height="26" viewBox="0 0 40 40" fill="none">
+          <rect width="40" height="40" rx="8" fill="url(#lg2)"/>
+          <path d="M12 28V14l8 7 8-7v14" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <defs><linearGradient id="lg2" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse"><stop stop-color="#818cf8"/><stop offset="1" stop-color="#a855f7"/></linearGradient></defs>
+        </svg>
+        <span class="sb-logo-text sb-label">Super Agent</span>
+      </div>
+      <button class="sb-collapse-btn" onclick="toggleSidebar()" title="Свернуть (Ctrl+B)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+      </button>
+    </div>
+
+    <!-- New chat -->
+    <div class="sb-new">
+      <button class="sb-new-btn" onclick="newChat()" title="Новый чат (Ctrl+K)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span class="sb-label">Новый чат</span>
+      </button>
+      <button class="sb-search-btn sb-label" onclick="openCmdPalette()" title="Поиск (Ctrl+/)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </button>
+    </div>
+
+    <!-- Nav -->
+    <nav class="sb-nav">
+      <button class="sb-nav-item active" data-tab="chat" onclick="switchTab('chat',this)">
+        <svg class="sb-nav-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span class="sb-label">Чат</span>
+      </button>
+      <button class="sb-nav-item" data-tab="agents" onclick="switchTab('agents',this)">
+        <svg class="sb-nav-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a6 6 0 0 1 12 0v2"/></svg>
+        <span class="sb-label">Агенты</span>
+      </button>
+      <button class="sb-nav-item" data-tab="templates" onclick="switchTab('templates',this)">
+        <svg class="sb-nav-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        <span class="sb-label">Шаблоны</span>
+      </button>
+      <button class="sb-nav-item" data-tab="canvas" onclick="switchTab('canvas',this)">
+        <svg class="sb-nav-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        <span class="sb-label">Канвас</span>
+      </button>
+      <button class="sb-nav-item" data-tab="analytics" onclick="switchTab('analytics',this)">
+        <svg class="sb-nav-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <span class="sb-label">Аналитика</span>
+      </button>
+      <button class="sb-nav-item" data-tab="connectors" onclick="switchTab('connectors',this)">
+        <svg class="sb-nav-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <span class="sb-label">Коннекторы</span>
+      </button>
+      <button class="sb-nav-item" data-tab="scheduled" onclick="switchTab('scheduled',this)">
+        <svg class="sb-nav-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span class="sb-label">Расписание</span>
+      </button>
+      <button class="sb-nav-item" data-tab="audit" onclick="switchTab('audit',this)">
+        <svg class="sb-nav-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        <span class="sb-label">Аудит</span>
+      </button>
+      <button class="sb-nav-item" data-tab="admin" onclick="switchTab('admin',this)" id="adminNavBtn" style="display:none">
+        <svg class="sb-nav-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+        <span class="sb-label">Админ</span>
+      </button>
+    </nav>
+
+    <!-- Chat history -->
+    <div class="sb-section">
+      <div class="sb-section-header">
+        <span class="sb-section-label sb-label">Чаты</span>
+      </div>
+      <div class="sb-search-wrap sb-label">
+        <input type="text" class="sb-search-input" placeholder="Поиск чатов..." id="chatSearch" oninput="filterChats(this.value)">
+      </div>
+      <div class="sb-chats" id="chatList">
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="sb-footer">
+      <button class="sb-footer-btn" onclick="openSettings()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+        <span class="sb-label">Настройки</span>
+      </button>
+      <div class="sb-user" onclick="openSettings('account')">
+        <div class="sb-avatar" id="sbAvatar">A</div>
+        <div class="sb-user-info">
+          <span class="sb-user-name" id="sbUserName">Admin</span>
+          <span class="sb-user-role" id="sbUserRole">Administrator</span>
+        </div>
+        <button class="sb-logout-btn" onclick="event.stopPropagation(); doLogout()" title="Выйти">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ═══ MAIN ═══ -->
+  <main class="main" id="mainArea">
+
+    <!-- Mobile topbar -->
+    <div class="mobile-bar">
+      <button class="mobile-menu-btn" onclick="openMobileSidebar()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <span class="mobile-title">Super Agent</span>
+      <button class="mobile-action-btn" onclick="newChat()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+    </div>
+
+    <!-- ═══ CHAT TAB ═══ -->
+    <div class="tab-pane active" id="tab-chat">
+      <div style="display:flex;flex:1;overflow:hidden;min-height:0;">
+        <div class="chat-workspace" id="chatWorkspace">
+
+          <!-- Chat header -->
+          <div class="chat-header">
+            <div class="chat-header-left">
+              <div class="chat-title-row">
+                <span class="chat-title" id="chatTitle">Новый чат</span>
+                <span class="task-badge hidden" id="taskBadge">
+                  <span class="live-dot" id="liveDot"></span>
+                  <span id="taskStatus">В работе</span>
+                </span>
+              </div>
+              <div class="chat-meta-row" id="chatMetaRow">
+                <span class="chat-meta-item">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  <span id="chatDuration">0 сек</span>
+                </span>
+                <span class="chat-meta-sep">·</span>
+                <span class="chat-meta-item">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                  <span id="chatCostDisplay" style="color:var(--accent-green);font-weight:500">₽0.00</span>
+                </span>
+                <span class="chat-meta-sep">·</span>
+                <span class="chat-meta-item" id="chatMsgCount">0 сообщений</span>
+              </div>
+            </div>
+            <div class="chat-header-right">
+              <!-- Model selector -->
+              <div class="model-sel-wrap">
+                <button class="model-sel-btn" id="modelSelBtn" onclick="toggleModelMenu()" aria-expanded="false">
+                  <span class="model-dot green" id="modelDot"></span>
+                  <span id="modelSelLabel">🔴 Оригинал</span>
+                  <svg class="model-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <div class="model-menu hidden" id="modelMenu">
+                  <div class="model-menu-header">Выберите модель</div>
+                  <div class="model-dropdown-item active" data-model-id="original" onclick="selectModel('original','🔴 Оригинал','red')">
+                    <span class="model-dropdown-dot red"></span>
+                    <div class="model-dropdown-info">
+                      <div class="model-dropdown-name">🔴 Оригинал</div>
+                      <div class="model-dropdown-desc">Grok Code Fast 1 · Быстрый и точный</div>
+                    </div>
+                    <div class="model-dropdown-price">₽0.02/1K</div>
+                  </div>
+                  <div class="model-dropdown-item" data-model-id="premium" onclick="selectModel('premium','🟢 Премиум','green')">
+                    <span class="model-dropdown-dot green"></span>
+                    <div class="model-dropdown-info">
+                      <div class="model-dropdown-name">🟢 Премиум</div>
+                      <div class="model-dropdown-desc">MiniMax M2.5 · Мощный</div>
+                    </div>
+                    <div class="model-dropdown-price">₽0.08/1K</div>
+                  </div>
+                  <div class="model-dropdown-item" data-model-id="budget" onclick="selectModel('budget','🔵 Бюджет','blue')">
+                    <span class="model-dropdown-dot blue"></span>
+                    <div class="model-dropdown-info">
+                      <div class="model-dropdown-name">🔵 Бюджет</div>
+                      <div class="model-dropdown-desc">DeepSeek V3.2 · Экономный</div>
+                    </div>
+                    <div class="model-dropdown-price">₽0.01/1K</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Enhanced toggle -->
+              <div class="enhanced-wrap">
+                <span class="enhanced-label">Enhanced</span>
+                <button class="toggle-btn" id="enhancedToggle" onclick="toggleEnhanced()">
+                  <span class="toggle-thumb"></span>
+                </button>
+              </div>
+
+              <!-- Agent computer toggle -->
+              <button class="header-icon-btn" id="acToggleBtn" onclick="toggleAgentComputer()" title="Компьютер агента">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              </button>
+
+              <!-- Download -->
+              <button class="header-icon-btn" onclick="downloadChat()" title="Скачать чат">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              </button>
+              <!-- Share -->
+              <button class="header-icon-btn" onclick="shareChat()" title="Поделиться">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              </button>
+
+              <!-- Clear -->
+              <button class="header-icon-btn danger" onclick="clearChat()" title="Очистить чат">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Chat body -->
+          <div class="chat-body" id="chatBody">
+            <!-- Welcome screen -->
+            <div class="welcome-screen" id="welcomeScreen">
+              <div class="welcome-icon">
+                <svg width="64" height="64" viewBox="0 0 40 40" fill="none">
+                  <rect width="40" height="40" rx="12" fill="url(#lg3)"/>
+                  <path d="M12 28V14l8 7 8-7v14" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                  <defs><linearGradient id="lg3" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse"><stop stop-color="#818cf8"/><stop offset="1" stop-color="#a855f7"/></linearGradient></defs>
+                </svg>
+              </div>
+              <div class="welcome-title">Чем могу помочь?</div>
+              <div class="welcome-sub">Я Super Agent — ваш AI-помощник для разработки, деплоя, анализа данных и многого другого.</div>
+              <div class="welcome-suggestions" id="welcomeSuggestions">
+                <button class="welcome-sug" onclick="useSuggestion(this)">🚀 Задеплой мой сайт на сервер</button>
+                <button class="welcome-sug" onclick="useSuggestion(this)">📊 Проанализируй данные из CSV</button>
+                <button class="welcome-sug" onclick="useSuggestion(this)">🔧 Настрой nginx с SSL</button>
+                <button class="welcome-sug" onclick="useSuggestion(this)">💻 Напиши REST API на Python</button>
+                <button class="welcome-sug" onclick="useSuggestion(this)">🐳 Создай Docker Compose файл</button>
+                <button class="welcome-sug" onclick="useSuggestion(this)">📈 Построй дашборд аналитики</button>
+              </div>
+            </div>
+
+            <!-- Messages container -->
+            <div class="messages" id="messages"></div>
+
+            <!-- Task progress -->
+            <div class="task-progress hidden" id="taskProgress">
+              <div class="task-progress-header">
+                <div class="task-progress-title">
+                  <span class="live-dot"></span>
+                  <span id="taskProgressTitle">Выполнение задачи</span>
+                  <span id="taskProgressCount" style="font-size:12px;color:var(--text3);font-weight:400"></span>
+                </div>
+                <div class="task-progress-actions">
+                  <button class="task-action-btn" onclick="pauseTask()" title="Пауза" id="pauseBtn">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                  </button>
+                  <button class="task-action-btn danger" onclick="cancelTask()" title="Отменить">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="task-steps" id="taskSteps"></div>
+              <div class="task-progress-bar">
+                <div class="task-progress-fill" id="taskProgressFill"></div>
+              </div>
+            </div>
+
+            <!-- Scroll to bottom -->
+            <button class="scroll-bottom-btn hidden" id="scrollBottomBtn" onclick="scrollToBottom()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+          </div>
+
+          <!-- Input area -->
+          <div class="input-area">
+            <!-- Drag & drop zone -->
+            <div class="drop-zone hidden" id="dropZone">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Перетащите файл сюда
+            </div>
+
+            <!-- Attached file -->
+            <div class="attached-file hidden" id="attachedFile">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span id="attachedFileName">file.txt</span>
+              <button class="attached-remove" onclick="removeAttachment()">×</button>
+            </div>
+
+            <div class="input-box" id="inputBox">
+              <div class="input-tools-left">
+                <button class="input-tool-btn" onclick="triggerFileUpload()" title="Прикрепить файл">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                </button>
+                <input type="file" id="fileInput" style="display:none" multiple onchange="handleFileSelect(this)">
+              </div>
+
+              <textarea class="chat-input" id="chatInput" placeholder="Напишите задачу или вопрос..." rows="1"
+                onkeydown="handleInputKey(event)" oninput="autoResize(this); updateCostHint()"></textarea>
+
+              <div class="input-tools-right">
+                <button class="input-tool-btn stop-btn" id="stopBtn" onclick="stopGeneration()" title="Остановить" style="display:none">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" fill="currentColor"/></svg>
+                </button>
+                <button class="send-btn" id="sendBtn" onclick="STATE.isGenerating ? injectMessage() : sendMessage()" title="Отправить (Enter)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="input-footer">
+              <span id="inputFooterHint">Enter — отправить · Shift+Enter — новая строка · Ctrl+/ — поиск</span>
+              <span class="input-cost-hint" id="costHint"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent Computer Panel -->
+        <div class="agent-computer hidden" id="agentComputer">
+          <div class="ac-header">
+            <span class="ac-title">🖥️ Компьютер Агента</span>
+            <div class="ac-header-right">
+              <button class="ac-btn" onclick="toggleACFullscreen()" title="Полный экран">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+              </button>
+              <button class="ac-btn" onclick="toggleAgentComputer()" title="Закрыть">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="ac-tabs">
+            <button class="ac-tab active" data-pane="terminal" onclick="switchACPane('terminal',this)">Терминал</button>
+            <button class="ac-tab" data-pane="browser" onclick="switchACPane('browser',this)">Браузер</button>
+            <button class="ac-tab" data-pane="files" onclick="switchACPane('files',this)">Файлы</button>
+          </div>
+          <div class="ac-body">
+            <div class="ac-pane active" id="ac-terminal">
+              <div class="terminal" id="terminalOutput">
+                <div class="terminal-line"><span class="term-prompt">ubuntu@agent:~$</span> <span class="term-text">Ожидание задачи...</span></div>
+              </div>
+            </div>
+            <div class="ac-pane" id="ac-browser">
+              <div class="ac-browser-bar" id="acBrowserBar" style="display:none">
+                <div class="ac-browser-dots"><span></span><span></span><span></span></div>
+                <div class="ac-browser-url" id="acBrowserUrl">about:blank</div>
+                <div class="ac-browser-status" id="acBrowserStatus"></div>
+              </div>
+              <div class="ac-browser-viewport" id="acBrowserViewport">
+                <div class="ac-placeholder" id="acBrowserPlaceholder">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                  <p>Браузер агента появится здесь</p>
+                </div>
+                <img id="acBrowserScreenshot" src="" alt="Browser screenshot" style="display:none;width:100%;height:100%;object-fit:contain;border-radius:4px;" />
+              </div>
+            </div>
+            <div class="ac-pane" id="ac-files">
+              <div class="ac-placeholder">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <p>Файлы агента появятся здесь</p>
+              </div>
+            </div>
+          </div>
+          <div class="ac-footer">
+            <div class="ac-timeline">
+              <button class="ac-tl-btn" onclick="jumpToLive()">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Jump to live
+              </button>
+              <div class="ac-tl-bar"><div class="ac-tl-fill" id="acTlFill"></div></div>
+              <span class="ac-live-dot">● live</span>
+            </div>
+            <div class="ac-step-info" id="acStepInfo">Готов к работе</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ AGENTS TAB ═══ -->
+    <div class="tab-pane" id="tab-agents">
+      <div class="tab-inner">
+        <div class="tab-header">
+          <div class="tab-title">Агенты</div>
+          <div class="tab-sub">Специализированные AI-агенты для различных задач</div>
+        </div>
+        <div class="agents-grid" id="agentsGrid">
+          <!-- populated by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ TEMPLATES TAB ═══ -->
+    <div class="tab-pane" id="tab-templates">
+      <div class="tab-inner">
+        <div class="tab-header">
+          <div class="tab-title">Шаблоны задач</div>
+          <div class="tab-sub">Готовые шаблоны для быстрого старта</div>
+        </div>
+        <div class="templates-filter" id="templatesFilter">
+          <button class="filter-btn active" data-cat="all" onclick="filterTemplates('all',this)">Все</button>
+          <button class="filter-btn" data-cat="deploy" onclick="filterTemplates('deploy',this)">Деплой</button>
+          <button class="filter-btn" data-cat="code" onclick="filterTemplates('code',this)">Код</button>
+          <button class="filter-btn" data-cat="data" onclick="filterTemplates('data',this)">Данные</button>
+          <button class="filter-btn" data-cat="research" onclick="filterTemplates('research',this)">Исследование</button>
+        </div>
+        <div class="templates-grid" id="templatesGrid">
+          <!-- populated by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ CANVAS TAB ═══ -->
+    <div class="tab-pane" id="tab-canvas">
+      <div class="tab-inner">
+        <div class="tab-header">
+          <div class="tab-title">Канвас</div>
+          <div class="tab-sub">Артефакты и результаты работы агентов</div>
+        </div>
+        <div class="canvas-grid" id="canvasGrid">
+          <div class="empty-state">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            <p>Артефакты появятся здесь после выполнения задач</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ ANALYTICS TAB ═══ -->
+    <div class="tab-pane" id="tab-analytics">
+      <div class="tab-inner">
+        <div class="tab-header">
+          <div class="tab-title">Аналитика</div>
+          <div class="tab-sub">Статистика использования и стоимость запросов</div>
+        </div>
+        <div class="analytics-cards" id="analyticsCards">
+          <div class="analytics-card">
+            <div class="ac-card-icon green">$</div>
+            <div><span class="ac-card-val" id="totalCostVal">$0.00</span><span class="ac-card-label">Общая стоимость</span></div>
+          </div>
+          <div class="analytics-card">
+            <div class="ac-card-icon blue">💬</div>
+            <div><span class="ac-card-val" id="totalMsgsVal">0</span><span class="ac-card-label">Сообщений</span></div>
+          </div>
+          <div class="analytics-card">
+            <div class="ac-card-icon purple">🔤</div>
+            <div><span class="ac-card-val" id="totalTokensVal">0</span><span class="ac-card-label">Токенов</span></div>
+          </div>
+          <div class="analytics-card">
+            <div class="ac-card-icon orange">⚡</div>
+            <div><span class="ac-card-val" id="avgCostVal">$0.00</span><span class="ac-card-label">Ср. стоимость/чат</span></div>
+          </div>
+        </div>
+        <div class="analytics-charts">
+          <div class="chart-card">
+            <div class="chart-title">Расходы по дням</div>
+            <canvas id="costChart" height="200"></canvas>
+          </div>
+          <div class="chart-card">
+            <div class="chart-title">Использование моделей</div>
+            <canvas id="modelChart" height="200"></canvas>
+          </div>
+        </div>
+        <div class="analytics-table-wrap">
+          <div class="chart-title">История чатов</div>
+          <table class="analytics-table">
+            <thead>
+              <tr>
+                <th>Чат</th>
+                <th>Модель</th>
+                <th>Сообщений</th>
+                <th>Токенов</th>
+                <th>Стоимость</th>
+                <th>Дата</th>
+              </tr>
+            </thead>
+            <tbody id="analyticsTableBody">
+              <tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px">Нет данных</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ CONNECTORS TAB ═══ -->
+    <div class="tab-pane" id="tab-connectors">
+      <div class="tab-inner">
+        <div class="tab-header">
+          <div class="tab-title">Коннекторы</div>
+          <div class="tab-sub">Интеграции с внешними сервисами</div>
+        </div>
+        <div class="connectors-grid" id="connectorsGrid">
+          <!-- populated by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ SCHEDULED TAB ═══ -->
+    <div class="tab-pane" id="tab-scheduled">
+      <div class="tab-inner">
+        <div class="tab-header">
+          <div class="tab-title">Расписание</div>
+          <div class="tab-sub">Автоматические задачи по расписанию</div>
+          <button class="tab-action-btn" onclick="openScheduleModal()">+ Добавить задачу</button>
+        </div>
+        <div class="scheduled-list" id="scheduledList">
+          <div class="empty-state">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <p>Нет запланированных задач</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ AUDIT TAB ═══ -->
+    <div class="tab-pane" id="tab-audit">
+      <div class="tab-inner">
+        <div class="tab-header">
+          <div class="tab-title">Журнал аудита</div>
+          <div class="tab-sub">История всех действий в системе</div>
+        </div>
+        <div class="audit-list" id="auditList">
+          <!-- populated by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ ADMIN TAB ═══ -->
+    <div class="tab-pane" id="tab-admin">
+      <div class="tab-inner">
+        <div class="tab-header">
+          <div class="tab-title">Администрирование</div>
+          <div class="tab-sub">Управление системой и пользователями</div>
+        </div>
+        <div class="admin-stats" id="adminStats">
+          <!-- populated by JS -->
+        </div>
+        <div class="admin-section">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div class="admin-section-title" style="margin:0;">Пользователи</div>
+            <button class="send-btn" onclick="adminCreateUser()" style="padding:7px 14px;font-size:13px;display:flex;align-items:center;gap:6px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Создать пользователя
+            </button>
+          </div>
+          <table class="admin-table">
+            <thead><tr><th>Пользователь</th><th>Роль</th><th>Траты</th><th>Лимит</th><th>Статус</th><th>Действия</th></tr></thead>
+            <tbody id="adminUsersTable"></tbody>
+          </table>
+        </div>
+        <div class="admin-section">
+          <div class="admin-section-title">Информация о системе</div>
+          <div class="admin-info-grid" id="adminInfoGrid"></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ═══════════════════════════ SETTINGS MODAL ═══════════════════════════ -->
+<div class="modal-overlay hidden" id="settingsModal" onclick="closeModalOutside(event,'settingsModal')">
+  <div class="modal settings-modal" onclick="event.stopPropagation()">
+    <div class="modal-sidebar">
+      <div class="modal-brand">
+        <svg width="22" height="22" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="8" fill="url(#lg4)"/><path d="M12 28V14l8 7 8-7v14" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><defs><linearGradient id="lg4" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse"><stop stop-color="#818cf8"/><stop offset="1" stop-color="#a855f7"/></linearGradient></defs></svg>
+        Super Agent
+      </div>
+      <nav class="modal-nav">
+        <button class="modal-nav-item active" data-panel="general" onclick="switchSettingsPanel('general',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+          Настройки
+        </button>
+        <button class="modal-nav-item" data-panel="account" onclick="switchSettingsPanel('account',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Аккаунт
+        </button>
+        <button class="modal-nav-item" data-panel="models" onclick="switchSettingsPanel('models',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          Модели
+        </button>
+        <button class="modal-nav-item" data-panel="personalization" onclick="switchSettingsPanel('personalization',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8.56 2.75c4.37 6.03 6.02 9.42 8.03 17.72m2.54-15.38c-3.72 4.35-8.94 5.66-16.88 5.85m19.5 1.9c-3.5-.93-6.63-.82-8.94 0-2.58.92-5.01 2.86-7.44 6.32"/></svg>
+          Персонализация
+        </button>
+        <button class="modal-nav-item" data-panel="api" onclick="switchSettingsPanel('api',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          API ключи
+        </button>
+        <button class="modal-nav-item" data-panel="security" onclick="switchSettingsPanel('security',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Безопасность
+        </button>
+        <button class="modal-nav-item" data-panel="usage" onclick="switchSettingsPanel('usage',this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          Использование
+        </button>
+      </nav>
+    </div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title" id="settingsPanelTitle">Настройки</span>
+        <button class="modal-close" onclick="closeModal('settingsModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="settingsPanelBody">
+        <!-- populated by JS -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ SCHEDULE MODAL ═══════════════════════════ -->
+<div class="modal-overlay hidden" id="scheduleModal" onclick="closeModalOutside(event,'scheduleModal')">
+  <div class="modal schedule-modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span class="modal-title">Добавить задачу по расписанию</span>
+      <button class="modal-close" onclick="closeModal('scheduleModal')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Название</label>
+        <input type="text" class="form-input" id="schedName" placeholder="Ежедневный отчёт">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Задача</label>
+        <textarea class="form-input" id="schedTask" placeholder="Опишите задачу для агента..." rows="3"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cron расписание</label>
+        <input type="text" class="form-input" id="schedCron" placeholder="0 9 * * 1-5 (будни в 9:00)">
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('scheduleModal')">Отмена</button>
+        <button class="btn-primary" onclick="addScheduledTask()">Добавить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ COMMAND PALETTE ═══════════════════════════ -->
+<div class="cmd-overlay hidden" id="cmdPalette" onclick="closeCmdPalette()">
+  <div class="cmd-palette" onclick="event.stopPropagation()">
+    <div class="cmd-search-wrap">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" class="cmd-input" id="cmdInput" placeholder="Поиск команд и чатов..." oninput="filterCmd(this.value)" onkeydown="cmdKeyNav(event)">
+      <span class="cmd-esc">Esc</span>
+    </div>
+    <div class="cmd-results" id="cmdResults">
+      <!-- populated by JS -->
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ CONTEXT MENU ═══════════════════════════ -->
+<div class="ctx-menu hidden" id="ctxMenu">
+  <!-- populated by JS -->
+</div>
+
+<!-- ═══════════════════════════ TOAST ═══════════════════════════ -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="app.js?v=20260316n"></script>
+</body>
+</html>

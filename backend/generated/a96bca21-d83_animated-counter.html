@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Анимированный CSS Счётчик</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+
+        .container {
+            text-align: center;
+            padding: 2rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 3rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .counter-box {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 3rem 4rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-bottom: 2rem;
+        }
+
+        .counter {
+            font-size: 6rem;
+            font-weight: bold;
+            display: inline-block;
+        }
+
+        /* Базовый счётчик с анимацией */
+        .counter-basic {
+            animation: countUp 5s ease-out forwards;
+        }
+
+        @keyframes countUp {
+            0% {
+                content: "0";
+            }
+            10% {
+                content: "10";
+            }
+            20% {
+                content: "20";
+            }
+            30% {
+                content: "30";
+            }
+            40% {
+                content: "40";
+            }
+            50% {
+                content: "50";
+            }
+            60% {
+                content: "60";
+            }
+            70% {
+                content: "70";
+            }
+            80% {
+                content: "80";
+            }
+            90% {
+                content: "90";
+            }
+            100% {
+                content: "100";
+            }
+        }
+
+        /* Счётчик с изменением цвета */
+        .counter-color {
+            animation: countUpColor 5s ease-out forwards;
+        }
+
+        @keyframes countUpColor {
+            0% {
+                content: "0";
+                color: #ff6b6b;
+            }
+            25% {
+                content: "25";
+                color: #ffd93d;
+            }
+            50% {
+                content: "50";
+                color: #6bcf7f;
+            }
+            75% {
+                content: "75";
+                color: #4ecdc4;
+            }
+            100% {
+                content: "100";
+                color: #a8e6cf;
+            }
+        }
+
+        /* Счётчик с масштабированием */
+        .counter-scale {
+            animation: countUpScale 5s ease-out forwards;
+        }
+
+        @keyframes countUpScale {
+            0% {
+                content: "0";
+                transform: scale(0.5);
+            }
+            50% {
+                content: "50";
+                transform: scale(1.2);
+            }
+            100% {
+                content: "100";
+                transform: scale(1);
+            }
+        }
+
+        /* Счётчик с прыжками */
+        .counter-bounce {
+            animation: countUpBounce 5s ease-out forwards;
+        }
+
+        @keyframes countUpBounce {
+            0% {
+                content: "0";
+                transform: translateY(0);
+            }
+            10% {
+                content: "10";
+                transform: translateY(-20px);
+            }
+            20% {
+                content: "20";
+                transform: translateY(0);
+            }
+            30% {
+                content: "30";
+                transform: translateY(-20px);
+            }
+            40% {
+                content: "40";
+                transform: translateY(0);
+            }
+            50% {
+                content: "50";
+                transform: translateY(-30px);
+            }
+            60% {
+                content: "60";
+                transform: translateY(0);
+            }
+            70% {
+                content: "70";
+                transform: translateY(-20px);
+            }
+            80% {
+                content: "80";
+                transform: translateY(0);
+            }
+            90% {
+                content: "90";
+                transform: translateY(-10px);
+            }
+            100% {
+                content: "100";
+                transform: translateY(0);
+            }
+        }
+
+        .counters {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .counter-title {
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            opacity: 0.9;
+        }
+
+        .restart-btn {
+            margin-top: 3rem;
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .restart-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .info {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .counter {
+                font-size: 4rem;
+            }
+            
+            .counters {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Анимированные CSS Счётчики</h1>
+        
+        <div class="counters">
+            <div class="counter-box">
+                <div class="counter-title">Базовый счётчик</div>
+                <div class="counter counter-basic" id="counter1">0</div>
+            </div>
+            
+            <div class="counter-box">
+                <div class="counter-title">С изменением цвета</div>
+                <div class="counter counter-color" id="counter2">0</div>
+            </div>
+            
+            <div class="counter-box">
+                <div class="counter-title">С масштабированием</div>
+                <div class="counter counter-scale" id="counter3">0</div>
+            </div>
+            
+            <div class="counter-box">
+                <div class="counter-title">С прыжками</div>
+                <div class="counter counter-bounce" id="counter4">0</div>
+            </div>
+        </div>
+        
+        <button class="restart-btn" onclick="restartCounters()">🔄 Перезапустить анимацию</button>
+        
+        <div class="info">
+            <p>Все счётчики используют CSS @keyframes для анимации от 0 до 100</p>
+            <p>Длительность анимации: 5 секунд</p>
+        </div>
+    </div>
+
+    <script>
+        function animateCounter(element, start, end, duration) {
+            const startTime = performance.now();
+            
+            function update(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                const current = Math.floor(start + (end - start) * progress);
+                element.textContent = current;
+                
+                if (progress < 1) {
+                    requestAnimationFrame(update);
+                }
+            }
+            
+            requestAnimationFrame(update);
+        }
+
+        function restartCounters() {
+            const counters = document.querySelectorAll('.counter');
+            
+            counters.forEach(counter => {
+                counter.style.animation = 'none';
+                counter.offsetHeight;
+                setTimeout(() => {
+                    counter.style.animation = '';
+                }, 10);
+                animateCounter(counter, 0, 100, 5000);
+            });
+        }
+
+        window.addEventListener('load', () => {
+            document.querySelectorAll('.counter').forEach(counter => {
+                animateCounter(counter, 0, 100, 5000);
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>AI Dev Team Platform: Руководство по улучшению</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+
+    @page {
+      size: A4;
+      margin: 2.4cm 1.9cm;
+      @top-center { content: string(doc_title); }
+      @bottom-center { content: counter(page); }
+    }
+
+    @page :first {
+      margin: 0;
+      @top-center { content: none; }
+      @bottom-center { content: none; }
+    }
+
+    @page titlepage {
+      @top-center { content: none; }
+      @bottom-center { content: none; }
+    }
+
+    body {
+      font-family: "Noto Sans", "Noto Sans SC", sans-serif;
+      font-size: 11pt;
+      line-height: 1.65;
+      color: #1a1a1a;
+      text-align: justify;
+      text-align-last: start;
+    }
+
+    body { string-set: doc_title ""; }
+    h1 { string-set: doc_title content(); }
+    .cover-page { page: titlepage; }
+
+    /* Cover page */
+    .cover-page {
+      inline-size: 210mm;
+      block-size: 297mm;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: linear-gradient(135deg, #1e3a5f 0%, #0d1b2a 100%);
+      color: white;
+      text-align: center;
+      break-after: page;
+    }
+
+    .cover-badge {
+      font-size: 14pt;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      margin-bottom: 2rem;
+      opacity: 0.8;
+    }
+
+    .cover-title {
+      font-size: 32pt;
+      font-weight: 700;
+      line-height: 1.2;
+      margin: 0 2rem;
+    }
+
+    .cover-subtitle {
+      font-size: 16pt;
+      margin-top: 1.5rem;
+      opacity: 0.9;
+    }
+
+    .cover-meta {
+      position: absolute;
+      bottom: 4cm;
+      font-size: 11pt;
+      opacity: 0.8;
+    }
+
+    .cover-version {
+      margin-top: 3rem;
+      font-size: 24pt;
+      font-weight: 700;
+      color: #4ade80;
+    }
+
+    /* Typography */
+    h1 {
+      font-size: 20pt;
+      font-weight: 700;
+      color: #1e3a5f;
+      margin: 2rem 0 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid #1e3a5f;
+    }
+
+    h2 {
+      font-size: 16pt;
+      font-weight: 600;
+      color: #2d4a6f;
+      margin: 1.5rem 0 0.8rem;
+    }
+
+    h3 {
+      font-size: 13pt;
+      font-weight: 600;
+      color: #3d5a7f;
+      margin: 1.2rem 0 0.6rem;
+    }
+
+    h4 {
+      font-size: 11pt;
+      font-weight: 600;
+      color: #4d6a8f;
+      margin: 1rem 0 0.5rem;
+    }
+
+    p { margin: 0.6rem 0; }
+
+    /* Code blocks */
+    pre, code {
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      font-size: 9pt;
+    }
+
+    pre {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      padding: 0.8rem;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      margin: 0.8rem 0;
+      break-inside: avoid;
+    }
+
+    code {
+      background: #f1f5f9;
+      padding: 0.15rem 0.3rem;
+      border-radius: 3px;
+    }
+
+    pre code {
+      background: none;
+      padding: 0;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 10pt;
+      overflow-x: auto;
+    }
+
+    th, td {
+      border: 1px solid #d1d5db;
+      padding: 0.5rem 0.7rem;
+      text-align: left;
+    }
+
+    th {
+      background: #f1f5f9;
+      font-weight: 600;
+    }
+
+    tr { break-inside: avoid; }
+    thead { display: table-header-group; }
+
+    /* Lists */
+    ul, ol {
+      margin: 0.6rem 0;
+      padding-left: 1.5rem;
+    }
+
+    li { margin: 0.3rem 0; }
+
+    /* Blockquotes */
+    blockquote {
+      border-left: 3px solid #3b82f6;
+      margin: 1rem 0;
+      padding: 0.5rem 1rem;
+      background: #eff6ff;
+      font-style: italic;
+    }
+
+    /* Section dividers */
+    hr {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 2rem 0;
+    }
+
+    /* Badges */
+    .priority-critical {
+      display: inline-block;
+      background: #dc2626;
+      color: white;
+      padding: 0.15rem 0.5rem;
+      border-radius: 3px;
+      font-size: 9pt;
+      font-weight: 600;
+    }
+
+    .priority-high {
+      display: inline-block;
+      background: #f59e0b;
+      color: white;
+      padding: 0.15rem 0.5rem;
+      border-radius: 3px;
+      font-size: 9pt;
+      font-weight: 600;
+    }
+
+    .priority-medium {
+      display: inline-block;
+      background: #3b82f6;
+      color: white;
+      padding: 0.15rem 0.5rem;
+      border-radius: 3px;
+      font-size: 9pt;
+      font-weight: 600;
+    }
+
+    /* Info boxes */
+    .info-box {
+      border: 1px solid #93c5fd;
+      background: #eff6ff;
+      padding: 1rem;
+      border-radius: 4px;
+      margin: 1rem 0;
+    }
+
+    .warning-box {
+      border: 1px solid #fcd34d;
+      background: #fffbeb;
+      padding: 1rem;
+      border-radius: 4px;
+      margin: 1rem 0;
+    }
+
+    .danger-box {
+      border: 1px solid #fca5a5;
+      background: #fef2f2;
+      padding: 1rem;
+      border-radius: 4px;
+      margin: 1rem 0;
+    }
+
+    /* Architecture diagram */
+    .arch-diagram {
+      font-family: monospace;
+      font-size: 8pt;
+      background: #f8fafc;
+      padding: 1rem;
+      border: 1px solid #e2e8f0;
+      white-space: pre;
+      overflow-x: auto;
+      line-height: 1.3;
+    }
+
+    /* TOC */
+    .toc {
+      background: #f8fafc;
+      padding: 1.5rem;
+      border-radius: 4px;
+      margin: 1rem 0;
+      break-after: page;
+    }
+
+    .toc h2 {
+      margin-top: 0;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 0.5rem;
+    }
+
+    .toc ul {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .toc li {
+      margin: 0.4rem 0;
+    }
+
+    .toc a {
+      color: #1e3a5f;
+      text-decoration: none;
+      display: flex;
+      gap: 0.5em;
+    }
+
+    .toc a::after {
+      margin-inline-start: auto;
+      content: target-counter(attr(href url), page);
+    }
+
+    .toc .toc-l2 { padding-left: 1.5rem; }
+    .toc .toc-l3 { padding-left: 3rem; font-size: 10pt; }
+
+    /* Checklist */
+    .checklist {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .checklist li {
+      position: relative;
+      padding-left: 1.5rem;
+    }
+
+    .checklist li::before {
+      content: "[ ]";
+      position: absolute;
+      left: 0;
+      font-family: monospace;
+    }
+
+    .checklist .nested {
+      padding-left: 2.5rem;
+    }
+
+    /* Page breaks */
+    .page-break { break-after: page; }
+
+    /* Overflow guards */
+    pre, table, figure, img, svg, .diagram, blockquote {
+      max-inline-size: 100%;
+    }
+
+    a { overflow-wrap: anywhere; color: #2563eb; }
+
+    /* Footer */
+    .doc-footer {
+      margin-top: 3rem;
+      padding-top: 1rem;
+      border-top: 1px solid #e5e7eb;
+      font-size: 10pt;
+      color: #6b7280;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Cover Page -->
+<section class="cover-page">
+  <div class="cover-badge">Technical Documentation</div>
+  <h1 class="cover-title">AI Dev Team Platform</h1>
+  <p class="cover-subtitle">Руководство по улучшению системы до 10/10</p>
+  <p class="cover-version">7.5 &#8594; 10.0</p>
+  <div class="cover-meta">
+    <p>Версия 1.0 | 2026-03-12</p>
+    <p>MiniMax Agent</p>
+  </div>
+</section>
+
+<!-- Table of Contents -->
+<nav class="toc">
+  <h2>Содержание</h2>
+  <ul>
+    <li><a href="#sec-overview">1. Обзор текущего состояния</a></li>
+    <li class="toc-l2"><a href="#sec-arch">1.1 Архитектура системы</a></li>
+    <li class="toc-l2"><a href="#sec-score">1.2 Текущая оценка</a></li>
+    <li class="toc-l2"><a href="#sec-issues">1.3 Найденные проблемы</a></li>
+    <li><a href="#sec-security">2. Критические исправления безопасности</a></li>
+    <li class="toc-l2"><a href="#sec-secrets">2.1 Миграция секретов</a></li>
+    <li class="toc-l2"><a href="#sec-ratelimit">2.2 Rate Limiting</a></li>
+    <li><a href="#sec-deprecated">3. Исправление deprecated API</a></li>
+    <li class="toc-l2"><a href="#sec-datetime">3.1 datetime.utcnow()</a></li>
+    <li class="toc-l2"><a href="#sec-lifespan">3.2 @app.on_event → lifespan</a></li>
+    <li><a href="#sec-observability">4. Observability и мониторинг</a></li>
+    <li><a href="#sec-database">5. Оптимизация базы данных</a></li>
+    <li><a href="#sec-testing">6. Тестирование и CI/CD</a></li>
+    <li><a href="#sec-architecture">7. Архитектурные улучшения</a></li>
+    <li><a href="#sec-devops">8. DevOps и инфраструктура</a></li>
+    <li><a href="#sec-checklist">9. Чеклист готовности</a></li>
+  </ul>
+</nav>
+
+<!-- Section 1: Overview -->
+<h1 id="sec-overview">1. Обзор текущего состояния</h1>
+
+<h2 id="sec-arch">1.1 Архитектура системы</h2>
+
+<p>AI Dev Team Platform представляет собой платформу автоматизации разработки на базе 12 микросервисов:</p>
+
+<pre class="arch-diagram">
+┌─────────────────────────────────────────────────────────────────┐
+│                         NGINX (Reverse Proxy)                   │
+└─────────────────────────────────────────────────────────────────┘
+                                    │
+            ┌───────────────────────┼───────────────────────┐
+            ▼                       ▼                       ▼
+    ┌──────────────┐       ┌──────────────┐       ┌──────────────┐
+    │  Web UI      │       │  Chat API    │       │ Orchestrator │
+    │  (Frontend)  │       │              │       │     API      │
+    └──────────────┘       └──────────────┘       └──────────────┘
+                                    │                       │
+                    ┌───────────────┴───────────────────────┤
+                    ▼                                       ▼
+            ┌──────────────┐                       ┌──────────────┐
+            │ Task Runner  │                       │   Planner    │
+            │              │                       │   Worker     │
+            └──────────────┘                       └──────────────┘
+                    │
+    ┌───────────────┼───────────────┬───────────────┐
+    ▼               ▼               ▼               ▼
+┌────────┐   ┌────────────┐   ┌──────────┐   ┌──────────────┐
+│ Coding │   │    QA      │   │   SSH    │   │   Browser    │
+│ Worker │   │   Worker   │   │  Worker  │   │   Worker     │
+└────────┘   └────────────┘   └──────────┘   └──────────────┘
+
+    ┌───────────────────────────────────────┐
+    │     PostgreSQL  │  Redis  │  MinIO    │
+    └───────────────────────────────────────┘
+</pre>
+
+<h2 id="sec-score">1.2 Текущая оценка: 7.5/10</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Категория</th>
+      <th>Текущий балл</th>
+      <th>Целевой балл</th>
+      <th>Gap</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Безопасность</td><td>6/10</td><td>10/10</td><td style="color:#dc2626">-4</td></tr>
+    <tr><td>Качество кода</td><td>8/10</td><td>10/10</td><td style="color:#f59e0b">-2</td></tr>
+    <tr><td>Архитектура</td><td>8/10</td><td>10/10</td><td style="color:#f59e0b">-2</td></tr>
+    <tr><td>Observability</td><td>5/10</td><td>10/10</td><td style="color:#dc2626">-5</td></tr>
+    <tr><td>DevOps</td><td>7/10</td><td>10/10</td><td style="color:#f59e0b">-3</td></tr>
+    <tr><td>Тестирование</td><td>6/10</td><td>10/10</td><td style="color:#dc2626">-4</td></tr>
+  </tbody>
+</table>
+
+<h2 id="sec-issues">1.3 Найденные проблемы</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Файл</th>
+      <th>Проблема</th>
+      <th>Строки</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>libs/shared/dto.py</code></td><td>datetime.utcnow</td><td>72, 176, 190</td></tr>
+    <tr><td><code>libs/shared/models.py</code></td><td>datetime.utcnow</td><td>78, 105, 106, 166, 192, 211, 215, 235</td></tr>
+    <tr><td><code>apps/memory-service/app/main.py</code></td><td>@app.on_event</td><td>246</td></tr>
+    <tr><td><code>apps/chat-api/app/main.py</code></td><td>@app.on_event</td><td>165, 176</td></tr>
+    <tr><td><code>apps/approval-service/app/main.py</code></td><td>@app.on_event</td><td>12</td></tr>
+    <tr><td><code>apps/task-runner/app/main.py</code></td><td>@app.on_event</td><td>569</td></tr>
+    <tr><td><code>apps/orchestrator-api/app/main.py</code></td><td>@app.on_event</td><td>33</td></tr>
+    <tr><td><code>apps/planner-worker/app/main.py</code></td><td>@app.on_event</td><td>54</td></tr>
+    <tr><td><code>.env</code></td><td>Plaintext secrets</td><td>Весь файл</td></tr>
+  </tbody>
+</table>
+
+<!-- Section 2: Security -->
+<h1 id="sec-security">2. Критические исправления безопасности</h1>
+
+<div class="danger-box">
+  <strong>КРИТИЧНО:</strong> Все API ключи хранятся в plaintext в файле .env. Требуется немедленная миграция.
+</div>
+
+<h2 id="sec-secrets">2.1 Миграция секретов из .env в Docker Secrets</h2>
+
+<h4>Шаг 1: Создать директорию секретов</h4>
+<pre><code>mkdir -p /root/ai-dev-team-platform/secrets
+echo "sk-proj-xxx" > secrets/openai_api_key
+echo "sk-ant-xxx" > secrets/anthropic_api_key
+chmod 600 secrets/*</code></pre>
+
+<h4>Шаг 2: Обновить docker-compose.yml</h4>
+<pre><code>secrets:
+  openai_api_key:
+    file: ./secrets/openai_api_key
+  anthropic_api_key:
+    file: ./secrets/anthropic_api_key
+
+services:
+  orchestrator-api:
+    secrets:
+      - openai_api_key
+      - anthropic_api_key
+    environment:
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key</code></pre>
+
+<h4>Шаг 3: Код для чтения секретов</h4>
+<pre><code># libs/shared/config.py
+
+from pathlib import Path
+from functools import lru_cache
+
+def read_secret(secret_name: str, env_var: str = None) -> str:
+    """Читает секрет из Docker Secrets или env variable"""
+    secret_path = Path(f"/run/secrets/{secret_name}")
+    if secret_path.exists():
+        return secret_path.read_text().strip()
+    return os.getenv(env_var or secret_name.upper(), "")
+
+@lru_cache
+def get_openai_api_key() -> str:
+    return read_secret("openai_api_key", "OPENAI_API_KEY")</code></pre>
+
+<h2 id="sec-ratelimit">2.2 Rate Limiting</h2>
+
+<pre><code># pip install slowapi
+
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+
+@app.post("/api/chat")
+@limiter.limit("20/minute")
+async def chat(request: Request):
+    ...</code></pre>
+
+<!-- Section 3: Deprecated -->
+<h1 id="sec-deprecated">3. Исправление deprecated API</h1>
+
+<h2 id="sec-datetime">3.1 datetime.utcnow() → datetime.now(timezone.utc)</h2>
+
+<p><strong>Проблема:</strong> <code>datetime.utcnow()</code> deprecated в Python 3.12+</p>
+
+<h4>Исправление для models.py</h4>
+<pre><code># БЫЛО:
+from datetime import datetime
+created_at = mapped_column(DateTime, default=datetime.utcnow)
+
+# СТАЛО:
+from datetime import datetime, timezone
+
+def utc_now():
+    return datetime.now(timezone.utc)
+
+created_at = mapped_column(DateTime(timezone=True), default=utc_now)</code></pre>
+
+<h4>Скрипт автоматического исправления</h4>
+<pre><code>#!/usr/bin/env python3
+import re
+from pathlib import Path
+
+def fix_file(filepath: str):
+    path = Path(filepath)
+    content = path.read_text()
+
+    if 'from datetime import' in content and 'timezone' not in content:
+        content = re.sub(
+            r'from datetime import datetime',
+            'from datetime import datetime, timezone',
+            content
+        )
+
+    content = re.sub(
+        r'default=datetime\.utcnow(?!\()',
+        'default=lambda: datetime.now(timezone.utc)',
+        content
+    )
+
+    path.write_text(content)
+    print(f"Fixed: {filepath}")
+
+fix_file('libs/shared/dto.py')
+fix_file('libs/shared/models.py')</code></pre>
+
+<h2 id="sec-lifespan">3.2 @app.on_event('startup') → lifespan</h2>
+
+<p><strong>Проблема:</strong> <code>@app.on_event</code> deprecated в FastAPI 0.100+</p>
+
+<h4>Паттерн миграции</h4>
+<pre><code># БЫЛО (deprecated):
+app = FastAPI()
+
+@app.on_event("startup")
+async def startup_event():
+    await init_database()
+
+# СТАЛО (современный подход):
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # STARTUP
+    await init_database()
+    await connect_redis()
+    yield
+    # SHUTDOWN
+    await close_database()
+
+app = FastAPI(lifespan=lifespan)</code></pre>
+
+<!-- Section 4: Observability -->
+<h1 id="sec-observability">4. Observability и мониторинг</h1>
+
+<h3>4.1 Structured Logging (JSON)</h3>
+<pre><code># pip install structlog
+
+import structlog
+
+def setup_logging(service_name: str):
+    structlog.configure(
+        processors=[
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.add_log_level,
+            structlog.processors.JSONRenderer()
+        ],
+    )
+
+logger = get_logger()
+logger.info("Task created", task_id="123", priority="high")</code></pre>
+
+<h3>4.2 Prometheus Metrics</h3>
+<pre><code># pip install prometheus-fastapi-instrumentator
+
+from prometheus_client import Counter, Histogram
+
+llm_requests_total = Counter(
+    'llm_requests_total',
+    'Total LLM API requests',
+    ['provider', 'model', 'status']
+)
+
+llm_cost_total = Counter(
+    'llm_cost_dollars_total',
+    'Total cost in dollars',
+    ['provider', 'model']
+)</code></pre>
+
+<h3>4.3 Sentry Error Tracking</h3>
+<pre><code># pip install sentry-sdk[fastapi]
+
+import sentry_sdk
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN"),
+    environment="production",
+    traces_sample_rate=0.1,
+)</code></pre>
+
+<!-- Section 5: Database -->
+<h1 id="sec-database">5. Оптимизация базы данных</h1>
+
+<h3>5.1 SQL скрипт индексов</h3>
+<pre><code>-- TASKS
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tasks_project_status
+ON tasks(project_id, status);
+
+-- TASK_STEPS
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_task_steps_task_id
+ON task_steps(task_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_task_steps_task_order
+ON task_steps(task_id, step_order);
+
+-- AGENT_RUNS
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_agent_runs_step_id
+ON agent_runs(step_id);
+
+-- APPROVALS
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_approvals_pending
+ON approvals(status) WHERE status = 'pending';</code></pre>
+
+<h3>5.2 Connection Pooling (PgBouncer)</h3>
+<pre><code># docker-compose.yml
+services:
+  pgbouncer:
+    image: edoburu/pgbouncer:1.21.0
+    environment:
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 50</code></pre>
+
+<!-- Section 6: Testing -->
+<h1 id="sec-testing">6. Тестирование и CI/CD</h1>
+
+<h3>6.1 Структура тестов</h3>
+<pre><code>tests/
+├── conftest.py
+├── unit/
+│   ├── test_model_router.py
+│   ├── test_security_utils.py
+│   └── test_self_healing.py
+├── integration/
+│   ├── test_orchestrator_api.py
+│   └── test_database.py
+└── e2e/
+    └── test_full_workflow.py</code></pre>
+
+<h3>6.2 Пример теста</h3>
+<pre><code>import pytest
+from libs.shared.security_utils import validate_path
+
+class TestSecurityUtils:
+    @pytest.mark.parametrize("path,expected", [
+        ("/workspace/code/main.py", True),
+        ("../../../etc/passwd", False),
+    ])
+    def test_validate_path(self, path, expected):
+        assert validate_path(path, base_dir="/workspace") == expected</code></pre>
+
+<h3>6.3 GitHub Actions</h3>
+<pre><code>name: CI/CD Pipeline
+on:
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install ruff mypy black
+      - run: ruff check . && black --check .
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - run: pytest --cov=libs --cov-report=xml</code></pre>
+
+<!-- Section 7: Architecture -->
+<h1 id="sec-architecture">7. Архитектурные улучшения</h1>
+
+<h3>7.1 Message Queue (RabbitMQ)</h3>
+<pre><code>import aio_pika
+
+class MessageBroker:
+    async def publish(self, queue: str, message: dict):
+        await self.channel.default_exchange.publish(
+            aio_pika.Message(body=json.dumps(message).encode()),
+            routing_key=queue,
+        )</code></pre>
+
+<h3>7.2 Caching Layer</h3>
+<pre><code>def cached(prefix: str, ttl: int = 86400):
+    def decorator(func):
+        async def wrapper(*args, **kwargs):
+            key = f"{prefix}:{hash(str(args))}"
+            cached = await cache.get(key)
+            if cached:
+                return cached
+            result = await func(*args, **kwargs)
+            await cache.set(key, result, ttl)
+            return result
+        return wrapper
+    return decorator</code></pre>
+
+<h3>7.3 API Versioning</h3>
+<pre><code>app.include_router(router_v1, prefix="/api/v1")
+app.include_router(router_v2, prefix="/api/v2")</code></pre>
+
+<!-- Section 8: DevOps -->
+<h1 id="sec-devops">8. DevOps и инфраструктура</h1>
+
+<h3>8.1 Secure Dockerfile</h3>
+<pre><code>FROM python:3.12-slim AS builder
+WORKDIR /build
+COPY requirements.txt .
+RUN pip wheel --wheel-dir /wheels -r requirements.txt
+
+FROM python:3.12-slim
+RUN groupadd -r app && useradd -r -g app app
+COPY --from=builder /wheels /wheels
+RUN pip install /wheels/*
+USER app
+HEALTHCHECK CMD curl -f http://localhost:8000/health
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0"]</code></pre>
+
+<h3>8.2 Kubernetes Helm</h3>
+<pre><code>services:
+  orchestratorApi:
+    replicas: 2
+    resources:
+      requests: {memory: "256Mi", cpu: "100m"}
+      limits: {memory: "512Mi", cpu: "500m"}
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10</code></pre>
+
+<!-- Section 9: Checklist -->
+<h1 id="sec-checklist">9. Чеклист готовности</h1>
+
+<h3>Production Readiness Checklist</h3>
+
+<h4>Безопасность</h4>
+<ul class="checklist">
+  <li>Секреты в Vault/Docker Secrets</li>
+  <li>Rate limiting включён</li>
+  <li>HTTPS везде</li>
+  <li>Container security scan</li>
+</ul>
+
+<h4>Качество кода</h4>
+<ul class="checklist">
+  <li>datetime.utcnow исправлен</li>
+  <li>@app.on_event → lifespan</li>
+  <li>Type hints 100%</li>
+  <li>Тесты >80% coverage</li>
+</ul>
+
+<h4>Observability</h4>
+<ul class="checklist">
+  <li>JSON logging</li>
+  <li>Prometheus metrics</li>
+  <li>Grafana dashboards</li>
+  <li>Sentry интегрирован</li>
+</ul>
+
+<h4>База данных</h4>
+<ul class="checklist">
+  <li>Индексы созданы</li>
+  <li>Connection pooling</li>
+  <li>Бэкапы автоматизированы</li>
+</ul>
+
+<h4>CI/CD</h4>
+<ul class="checklist">
+  <li>GitHub Actions настроен</li>
+  <li>Pre-commit hooks</li>
+  <li>Feature flags</li>
+</ul>
+
+<h3>Приоритетный план выполнения</h3>
+
+<table>
+  <thead>
+    <tr><th>Неделя</th><th>Задачи</th><th>Приоритет</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1-2</td><td>Секреты, Rate limiting, Deprecated fixes</td><td><span class="priority-critical">Критично</span></td></tr>
+    <tr><td>3-4</td><td>Prometheus, Sentry, JSON logging</td><td><span class="priority-high">Важно</span></td></tr>
+    <tr><td>5-6</td><td>Тесты, CI/CD, Pre-commit</td><td><span class="priority-high">Важно</span></td></tr>
+    <tr><td>7-8</td><td>Message Queue, Caching, API versioning</td><td><span class="priority-medium">Средне</span></td></tr>
+    <tr><td>9+</td><td>Kubernetes, DR planning</td><td><span class="priority-medium">Средне</span></td></tr>
+  </tbody>
+</table>
+
+<h3>Полезные команды</h3>
+<pre><code># Поиск deprecated кода
+grep -rn "datetime.utcnow" --include="*.py" .
+grep -rn "@app.on_event" --include="*.py" .
+
+# Тесты
+pytest --cov=libs --cov-report=html
+
+# Линтинг
+ruff check . --fix && black . && mypy libs/shared
+
+# Docker
+docker-compose build --parallel
+
+# БД миграции
+alembic upgrade head</code></pre>
+
+<div class="doc-footer">
+  <p><strong>Документ подготовлен:</strong> MiniMax Agent</p>
+  <p><strong>Дата:</strong> 2026-03-12</p>
+  <p><strong>Версия:</strong> 1.0</p>
+</div>
+
+</body>
+</html>

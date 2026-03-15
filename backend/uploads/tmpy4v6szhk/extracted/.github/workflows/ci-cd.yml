@@ -1,0 +1,291 @@
+# Super Agent v6.0 CI/CD Pipeline
+# Stages: lint → test → build → deploy → smoke-test
+
+name: Super Agent CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+  SERVER_HOST: "2.56.240.170"
+  SERVER_USER: "root"
+  DEPLOY_PATH: "/var/www/super-agent"
+
+jobs:
+  # ═══════════════════════════════════════════════════════════
+  # Stage 1: Lint
+  # ═══════════════════════════════════════════════════════════
+  lint:
+    name: "🔍 Lint & Static Analysis"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install lint dependencies
+        run: |
+          pip install flake8 pylint bandit safety
+
+      - name: Flake8 - Style check
+        run: |
+          flake8 backend/ --max-line-length=150 --ignore=E501,W503,E402,E722,F401 --count --statistics
+        continue-on-error: false
+
+      - name: Bandit - Security scan
+        run: |
+          bandit -r backend/ -ll --skip B101,B311,B404,B603,B607 -f json -o bandit-report.json || true
+          bandit -r backend/ -ll --skip B101,B311,B404,B603,B607
+
+      - name: Safety - Dependency vulnerability check
+        run: |
+          pip install -r backend/requirements.txt 2>/dev/null || true
+          safety check --json --output safety-report.json || true
+
+      - name: Upload lint reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-reports
+          path: |
+            bandit-report.json
+            safety-report.json
+
+  # ═══════════════════════════════════════════════════════════
+  # Stage 2: Test
+  # ═══════════════════════════════════════════════════════════
+  test:
+    name: "🧪 Unit & Integration Tests"
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-cov pytest-asyncio httpx
+          pip install -r backend/requirements.txt 2>/dev/null || true
+          pip install flask requests beautifulsoup4 Pillow matplotlib openpyxl python-docx fpdf2
+
+      - name: Python syntax check (all backend files)
+        run: |
+          python -c "
+          import ast, sys, os
+          errors = []
+          for f in os.listdir('backend'):
+              if f.endswith('.py'):
+                  try:
+                      ast.parse(open(f'backend/{f}').read())
+                  except SyntaxError as e:
+                      errors.append(f'{f}: {e}')
+          if errors:
+              print('SYNTAX ERRORS:')
+              for e in errors:
+                  print(f'  ✗ {e}')
+              sys.exit(1)
+          else:
+              print(f'✓ All backend Python files pass syntax check')
+          "
+
+      - name: JavaScript syntax check
+        run: |
+          node -c frontend/app.js
+
+      - name: Run unit tests
+        run: |
+          cd backend && python -m pytest tests/ -v --tb=short --cov=. --cov-report=xml --cov-report=term-missing || true
+
+      - name: Run integration tests
+        run: |
+          cd backend && python -m pytest tests/integration/ -v --tb=short || true
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: backend/coverage.xml
+
+  # ═══════════════════════════════════════════════════════════
+  # Stage 3: Build
+  # ═══════════════════════════════════════════════════════════
+  build:
+    name: "📦 Build & Package"
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create release package
+        run: |
+          VERSION=$(date +%Y%m%d-%H%M%S)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          mkdir -p dist
+          tar -czf dist/super-agent-${VERSION}.tar.gz \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='.env' \
+            --exclude='generated/*' \
+            --exclude='uploads/*' \
+            backend/ frontend/
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-package
+          path: dist/
+
+  # ═══════════════════════════════════════════════════════════
+  # Stage 4: Deploy
+  # ═══════════════════════════════════════════════════════════
+  deploy:
+    name: "🚀 Deploy to Production"
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-package
+          path: dist/
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ env.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            # Backup current version
+            BACKUP_DIR="/var/www/backups/super-agent-$(date +%Y%m%d-%H%M%S)"
+            mkdir -p "$BACKUP_DIR"
+            cp -r ${{ env.DEPLOY_PATH }}/backend/*.py "$BACKUP_DIR/" 2>/dev/null || true
+            cp -r ${{ env.DEPLOY_PATH }}/frontend/*.js "$BACKUP_DIR/" 2>/dev/null || true
+
+            # Pull latest code
+            cd ${{ env.DEPLOY_PATH }}
+            git pull origin main 2>/dev/null || true
+
+            # Install/update dependencies
+            pip3 install -r backend/requirements.txt 2>/dev/null || true
+
+            # Restart service
+            systemctl restart super-agent-api
+
+            # Wait for startup
+            sleep 5
+
+            # Verify service is running
+            systemctl is-active super-agent-api
+
+      - name: Verify deployment
+        run: |
+          sleep 10
+          HEALTH=$(curl -sf http://${{ env.SERVER_HOST }}:3501/api/health || echo "FAILED")
+          echo "Health check: $HEALTH"
+          if echo "$HEALTH" | grep -q '"status":"ok"'; then
+            echo "✅ Deployment successful"
+          else
+            echo "❌ Deployment health check failed"
+            exit 1
+          fi
+
+  # ═══════════════════════════════════════════════════════════
+  # Stage 5: Smoke Test
+  # ═══════════════════════════════════════════════════════════
+  smoke-test:
+    name: "🔥 Smoke Tests"
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Health endpoint
+        run: |
+          RESPONSE=$(curl -sf http://${{ env.SERVER_HOST }}:3501/api/health)
+          echo "$RESPONSE" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          assert data['status'] == 'ok', 'Health check failed'
+          assert '6.0' in data.get('version', ''), 'Wrong version'
+          print(f'✅ Health OK - Version: {data[\"version\"]}')
+          print(f'   Features: {data.get(\"features_count\", \"?\")}')
+          "
+
+      - name: Templates API
+        run: |
+          RESPONSE=$(curl -sf http://${{ env.SERVER_HOST }}:3501/api/templates)
+          echo "$RESPONSE" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          templates = data.get('templates', [])
+          assert len(templates) >= 10, f'Expected 10+ templates, got {len(templates)}'
+          print(f'✅ Templates API OK - {len(templates)} templates')
+          "
+
+      - name: Models API
+        run: |
+          RESPONSE=$(curl -sf http://${{ env.SERVER_HOST }}:3501/api/models)
+          echo "$RESPONSE" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          models = data.get('models', [])
+          assert len(models) >= 3, f'Expected 3+ models, got {len(models)}'
+          print(f'✅ Models API OK - {len(models)} models')
+          "
+
+      - name: Static files
+        run: |
+          HTTP_CODE=$(curl -sf -o /dev/null -w '%{http_code}' http://${{ env.SERVER_HOST }}:3501/)
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Frontend loads OK (HTTP $HTTP_CODE)"
+          else
+            echo "❌ Frontend failed (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+
+      - name: Chat API (create + list)
+        run: |
+          # Create chat
+          CREATE=$(curl -sf -X POST http://${{ env.SERVER_HOST }}:3501/api/chats \
+            -H "Content-Type: application/json" \
+            -d '{"title": "Smoke Test Chat"}')
+          echo "Create: $CREATE"
+
+          # List chats
+          LIST=$(curl -sf http://${{ env.SERVER_HOST }}:3501/api/chats)
+          echo "$LIST" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          chats = data if isinstance(data, list) else data.get('chats', [])
+          print(f'✅ Chat API OK - {len(chats)} chats')
+          "
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "═══════════════════════════════════════"
+          echo "  🔥 Smoke Test Summary"
+          echo "═══════════════════════════════════════"
+          echo "  Server: ${{ env.SERVER_HOST }}"
+          echo "  Branch: ${{ github.ref_name }}"
+          echo "  Commit: ${{ github.sha }}"
+          echo "═══════════════════════════════════════"

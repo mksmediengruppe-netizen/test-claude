@@ -22,6 +22,7 @@ const STATE = {
   totalTokens: 0,
   selectedModel: 'original',
   enhancedMode: false,
+  selfCheckLevel: 'none',
   agentComputerVisible: false,
   sidebarCollapsed: false,
   settings: {
@@ -58,6 +59,12 @@ const CONFIG = {
     'original': { name: '🔴 Оригинал', desc: 'Grok Code Fast 1 · xAI', inputCost: 0.0000002, outputCost: 0.0000015 },
     'premium':  { name: '🟢 Премиум',  desc: 'MiniMax M2.5 · MiniMax', inputCost: 0.00000027, outputCost: 0.00000095 },
     'budget':   { name: '🔵 Бюджет',   desc: 'DeepSeek V3.2 · DeepSeek', inputCost: 0.00000026, outputCost: 0.00000038 },
+  },
+  SELF_CHECK_LEVELS: {
+    'none':   { name: 'Без проверки',     desc: 'Ответ как есть, без self-check',       quality: 0,  pricePct: 0,   dot: 'gray',   emoji: '⚡' },
+    'light':  { name: 'Лёгкая проверка',  desc: 'GPT-4.1 Nano проверяет ответ',       quality: 15, pricePct: 6,   dot: 'green',  emoji: '✅' },
+    'medium': { name: 'Средняя проверка', desc: 'Та же модель перепроверяет себя',  quality: 25, pricePct: 78,  dot: 'orange', emoji: '🔍' },
+    'deep':   { name: 'Глубокая проверка', desc: 'Claude Sonnet 4 проверяет всё',    quality: 40, pricePct: 224, dot: 'red',    emoji: '🛡️' },
   },
 };
 
@@ -297,8 +304,8 @@ async function initApp() {
   // Render chat list
   renderChatList();
 
-  // Show welcome screen (new chat) on load — do not auto-load last chat
-  newChat();
+  // Show welcome screen on load — do NOT create a chat until first message
+  showWelcome();
 
   // Init analytics charts
   initAnalyticsCharts();
@@ -393,8 +400,25 @@ function switchTab(tabName, btn) {
   if (tabName === 'scheduled') renderScheduledTasks();
   if (tabName === 'audit') renderAuditLog();
 }
-
-// ── Chat Management ────────────────────────────────────────────
+// ── Chat Management ────────────────────────────────────────────────────────
+function showWelcome() {
+  // Show welcome screen without creating a chat
+  STATE.currentChatId = null;
+  const titleEl = document.getElementById('chatTitle');
+  if (titleEl) titleEl.textContent = 'Новый чат';
+  document.getElementById('chatCostDisplay').textContent = '₽0.00';
+  const tokEl = document.getElementById('totalTokensVal');
+  if (tokEl) tokEl.textContent = '0';
+  const msgCountEl = document.getElementById('chatMsgCount');
+  if (msgCountEl) msgCountEl.textContent = '0 сообщений';
+  document.getElementById('messages').querySelectorAll('.message').forEach(m => m.remove());
+  document.getElementById('welcomeScreen').style.display = 'flex';
+  // Deselect all chats in sidebar
+  document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
+  switchTab('chat');
+  const input = document.getElementById('chatInput');
+  if (input) input.focus();
+}
 function newChat() {
   const id = 'chat_' + Date.now();
   STATE.chats[id] = {
@@ -598,7 +622,7 @@ function renderChatList() {
 
   list.innerHTML = chats.map(chat => {
     const costRub = chat.totalCost > 0 ? (chat.totalCost * CONFIG.USD_TO_RUB).toFixed(2) : null;
-    const ownerBadge = isAdmin && chat.owner ? `<span style="font-size:10px;color:var(--accent-orange);margin-left:4px;" title="Владелец: ${escapeHtml(chat.owner)}">👤 ${escapeHtml(chat.owner.split('@')[0])}</span>` : '';
+    const ownerBadge = isAdmin && chat.owner ? `<span style="font-size:10px;color:#f59e0b;margin-left:4px;background:rgba(245,158,11,0.12);padding:1px 5px;border-radius:8px;" title="Владелец: ${escapeHtml(chat.owner)}">👤 ${escapeHtml(chat.owner.split('@')[0])}</span>` : '';
     const msgCount = chat.messageCount > 0 ? `<span style="font-size:10px;color:var(--text-tertiary);">${chat.messageCount} сообщ.</span>` : '';
     return `
     <div class="chat-item ${chat.id === STATE.currentChatId ? 'active' : ''}" 
@@ -895,8 +919,24 @@ async function sendMessage() {
   const text = input.value.trim();
   if (!text) return;
 
-  const chat = STATE.chats[STATE.currentChatId];
-  if (!chat) { newChat(); return; }
+  let chat = STATE.chats[STATE.currentChatId];
+  if (!chat) {
+    // Create chat on first message (lazy creation)
+    const id = 'chat_' + Date.now();
+    STATE.chats[id] = {
+      id,
+      title: text.substring(0, 50) || 'Новый чат',
+      messages: [],
+      createdAt: new Date().toISOString(),
+      totalCost: 0,
+      totalTokens: 0,
+      model: STATE.selectedModel,
+    };
+    STATE.currentChatId = id;
+    chat = STATE.chats[id];
+    saveChats();
+    renderChatList();
+  }
 
   // Clear input
   input.value = '';
@@ -934,6 +974,8 @@ async function sendMessage() {
   if (filesToUpload.length > 0) {
     const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
     if (token) {
+      // Show uploading toast
+      showToast(`Загрузка ${filesToUpload.length} файл(ов)...`, 'info');
       try {
         const formData = new FormData();
         filesToUpload.forEach(f => formData.append('file', f));
@@ -946,9 +988,15 @@ async function sendMessage() {
           const uploadData = await uploadResp.json();
           if (uploadData.content) {
             chat.pendingFile = uploadData.content;
+            showToast(`✅ Файл загружен (${uploadData.file_count || filesToUpload.length} шт.)`, 'success');
           }
+        } else {
+          showToast('❌ Ошибка загрузки файла', 'error');
         }
-      } catch(e) { console.error('File upload error:', e); }
+      } catch(e) {
+        console.error('File upload error:', e);
+        showToast('❌ Ошибка загрузки файла: ' + e.message, 'error');
+      }
     }
   }
   try {
@@ -1134,6 +1182,26 @@ async function callAPI(userMessage, chat) {
                 fullText += `\n\n[📎 ${parsed.filename}](${backendUrl}${parsed.url})`;
                 updateStreamingMessage(streamMsgId, fullText);
               }
+            } else if (type === 'self_check') {
+              if (parsed.status === 'started') {
+                addTaskStep('🛡️', `Self-Check (${parsed.level}): ${parsed.checker} проверяет ответ...`);
+                addThinkingStep(streamMsgId, '🛡️', `Self-Check: ${parsed.checker}`);
+              } else if (parsed.status === 'done') {
+                addTaskStep('✅', `Self-Check завершён — ответ улучшен`);
+                addThinkingStep(streamMsgId, '✅', 'Self-Check: ответ улучшен');
+              } else if (parsed.status === 'kept_original') {
+                addTaskStep('✅', `Self-Check: ответ корректен`);
+                addThinkingStep(streamMsgId, '✅', 'Self-Check: ответ корректен');
+              } else if (parsed.status === 'error') {
+                addTaskStep('⚠️', `Self-Check ошибка: ${parsed.error || ''}`);
+              }
+            } else if (type === 'self_check_replace') {
+              // Clear current response and prepare for checked version
+              fullText = '';
+              updateStreamingMessage(streamMsgId, '🛡️ *Self-Check: проверяю ответ...*\n\n');
+            } else if (type === 'self_check_content') {
+              fullText += parsed.text || '';
+              updateStreamingMessage(streamMsgId, '🛡️ *Проверенный ответ:*\n\n' + fullText);
             } else if (type === 'error') {
               const errMsg = parsed.text || parsed.message || parsed.error || 'Ошибка';
               addTaskStep('❌', errMsg);
@@ -1504,24 +1572,53 @@ function selectModel(modelId, modelName, dotColor) {
 function renderModelDropdown() {
   const menu = document.getElementById('modelMenu');
   if (!menu) return;
-  menu.innerHTML = Object.entries(CONFIG.MODELS).map(([id, m]) => {
-    const dotColors = { original: 'red', premium: 'green', budget: 'blue' };
-    const dot = dotColors[id] || 'gray';
-    // Estimate cost per 1000 tokens in RUB
-    const costPer1k = ((m.inputCost + m.outputCost) / 2 * 1000 * CONFIG.USD_TO_RUB).toFixed(2);
+  menu.innerHTML = Object.entries(CONFIG.SELF_CHECK_LEVELS).map(([id, lvl]) => {
+    const isActive = STATE.selfCheckLevel === id;
+    const qualityLabel = lvl.quality > 0 ? `К +${lvl.quality}%` : '';
+    const priceLabel = lvl.pricePct > 0 ? `Цена +${lvl.pricePct}%` : 'Бесплатно';
     return `
-      <div class="model-dropdown-item ${STATE.selectedModel === id ? 'active' : ''}" 
+      <div class="model-dropdown-item ${isActive ? 'active' : ''}" 
            data-model-id="${id}"
-           onclick="selectModel('${id}', '${m.name}', '${dot}')">
-        <span class="model-dropdown-dot ${dot}"></span>
+           onclick="selectSelfCheck('${id}')">
+        <span class="model-dropdown-dot ${lvl.dot}"></span>
         <div class="model-dropdown-info">
-          <div class="model-dropdown-name">${m.name}</div>
-          <div class="model-dropdown-desc">${m.desc}</div>
+          <div class="model-dropdown-name">${lvl.emoji} ${lvl.name}</div>
+          <div class="model-dropdown-desc">${lvl.desc}</div>
         </div>
-        <div class="model-dropdown-price">₽${costPer1k}/1K</div>
+        <div class="model-dropdown-price" style="text-align:right;font-size:11px;line-height:1.3">
+          <div style="color:#4ade80">${qualityLabel}</div>
+          <div style="color:${lvl.pricePct > 100 ? '#f87171' : lvl.pricePct > 0 ? '#fbbf24' : '#9ca3af'}">${priceLabel}</div>
+        </div>
       </div>
     `;
   }).join('');
+}
+
+function selectSelfCheck(levelId) {
+  STATE.selfCheckLevel = levelId;
+  const lvl = CONFIG.SELF_CHECK_LEVELS[levelId];
+  // Update button label
+  const labelEl = document.getElementById('modelSelLabel');
+  if (labelEl) labelEl.textContent = `${lvl.emoji} ${lvl.name}`;
+  const dotEl = document.getElementById('modelDot');
+  if (dotEl) dotEl.className = `model-dropdown-dot ${lvl.dot}`;
+  document.getElementById('modelMenu')?.classList.add('hidden');
+  document.getElementById('modelSelBtn')?.setAttribute('aria-expanded', 'false');
+  // Update active state
+  document.querySelectorAll('.model-dropdown-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.model-dropdown-item').forEach(el => {
+    if (el.dataset.modelId === levelId) el.classList.add('active');
+  });
+  // Save to backend
+  const token = localStorage.getItem('auth_token');
+  if (token) {
+    fetch(`${CONFIG.BACKEND_URL}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ self_check_level: levelId })
+    }).catch(() => {});
+  }
+  showToast(`${lvl.emoji} ${lvl.name}${lvl.quality > 0 ? ' (К +' + lvl.quality + '%)' : ''}`, 'info');
 }
 
 function toggleEnhanced() {
@@ -1652,7 +1749,10 @@ function autoResizeInput(textarea) {
 // Alias used in HTML oninput="autoResize(this)"
 function autoResize(el) { autoResizeInput(el); }
 
-function useSuggestion(text) {
+function useSuggestion(el) {
+  let text = (typeof el === 'string') ? el : el.textContent || '';
+  // Remove leading emoji characters and whitespace
+  text = text.replace(/^[\s\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}]+/u, '').trim();
   const input = document.getElementById('chatInput');
   input.value = text;
   autoResizeInput(input);
@@ -1676,14 +1776,23 @@ function attachFile(file) {
   attachedFiles.classList.remove('hidden');
   const fileIdx = _pendingFiles.length - 1;
   const chip = document.createElement('div');
-  chip.className = 'attached-file-chip';
+  chip.className = 'attached-file-chip loading';
   chip.dataset.fileIdx = fileIdx;
   chip.innerHTML = `
+    <span class="file-chip-spinner"></span>
     <span>${getFileIcon(file.name)} ${file.name}</span>
     <span style="color:var(--text-tertiary);font-size:11px;">${formatFileSize(file.size)}</span>
     <button onclick="removeFileChip(this, ${fileIdx})">×</button>
   `;
   attachedFiles.appendChild(chip);
+  // Simulate brief loading animation (file is already in memory, just show feedback)
+  setTimeout(() => {
+    chip.classList.remove('loading');
+    const spinner = chip.querySelector('.file-chip-spinner');
+    if (spinner) {
+      spinner.outerHTML = '<span class="chip-done-icon">✓</span>';
+    }
+  }, 600);
 }
 function removeFileChip(btn, idx) {
   _pendingFiles[idx] = null;  // mark as removed

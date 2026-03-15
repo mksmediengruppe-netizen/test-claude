@@ -1,0 +1,14 @@
+backend/data/database.sqlite
+backend/data/database.sqlite-shm
+backend/data/database.sqlite-wal
+backend/generated/
+backend/*.pyc
+backend/__pycache__/
+backend/uploads/
+backend/venv/
+*_backup.py
+*.bak
+frontend/backup_*/
+.pytest_cache/
+*_v4_backup.py
+*_v5.py

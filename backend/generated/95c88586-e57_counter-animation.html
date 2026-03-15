@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Анимированный CSS-счётчик</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .counter-container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 60px 80px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .counter-title {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 30px;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+
+        .counter {
+            font-size: 120px;
+            font-weight: bold;
+            color: #667eea;
+            display: inline-block;
+            position: relative;
+        }
+
+        .counter::after {
+            content: '%';
+            font-size: 60px;
+            color: #764ba2;
+            position: absolute;
+            right: -40px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        /* Анимация счётчика от 0 до 100 */
+        @keyframes countUp {
+            0% {
+                content: '0';
+            }
+            10% {
+                content: '10';
+            }
+            20% {
+                content: '20';
+            }
+            30% {
+                content: '30';
+            }
+            40% {
+                content: '40';
+            }
+            50% {
+                content: '50';
+            }
+            60% {
+                content: '60';
+            }
+            70% {
+                content: '70';
+            }
+            80% {
+                content: '80';
+            }
+            90% {
+                content: '90';
+            }
+            100% {
+                content: '100';
+            }
+        }
+
+        /* Вариант с использованием counter-reset и counter-increment */
+        @keyframes counterAnimation {
+            0% {
+                counter-value: 0;
+            }
+            100% {
+                counter-value: 100;
+            }
+        }
+
+        .counter-animated {
+            animation: countUp 5s ease-out forwards;
+        }
+
+        /* Дополнительный вариант с JavaScript-подобным эффектом через CSS */
+        .counter-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        .counter-digits {
+            display: flex;
+            overflow: hidden;
+            height: 120px;
+        }
+
+        .digit-column {
+            display: flex;
+            flex-direction: column;
+            animation: scrollDigits 5s steps(10) forwards;
+        }
+
+        .digit {
+            height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 120px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        @keyframes scrollDigits {
+            0% {
+                transform: translateY(0);
+            }
+            100% {
+                transform: translateY(-1200px);
+            }
+        }
+
+        /* Пульсирующий эффект при достижении 100 */
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+                text-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+            }
+            50% {
+                transform: scale(1.1);
+                text-shadow: 0 0 40px rgba(102, 126, 234, 0.8);
+            }
+        }
+
+        .counter-complete {
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        /* Прогресс бар */
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: #e0e0e0;
+            border-radius: 5px;
+            margin-top: 30px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 5px;
+            animation: progressAnimation 5s ease-out forwards;
+        }
+
+        @keyframes progressAnimation {
+            0% {
+                width: 0%;
+            }
+            100% {
+                width: 100%;
+            }
+        }
+
+        /* Кнопка перезапуска */
+        .restart-btn {
+            margin-top: 30px;
+            padding: 15px 40px;
+            font-size: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .restart-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .restart-btn:active {
+            transform: translateY(0);
+        }
+
+        /* Второй вариант счётчика с более плавной анимацией */
+        .counter-section {
+            margin-top: 50px;
+            padding-top: 50px;
+            border-top: 2px dashed #e0e0e0;
+        }
+
+        .counter-section h3 {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+
+        .smooth-counter {
+            font-size: 80px;
+            font-weight: bold;
+            color: #764ba2;
+            animation: smoothCount 5s ease-out forwards;
+        }
+
+        @keyframes smoothCount {
+            0% { opacity: 0; transform: translateY(20px); }
+            10% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        .smooth-counter::before {
+            content: '0';
+            animation: numberChange 5s steps(100) forwards;
+        }
+
+        @keyframes numberChange {
+            0% { content: '0'; }
+            1% { content: '1'; }
+            2% { content: '2'; }
+            3% { content: '3'; }
+            4% { content: '4'; }
+            5% { content: '5'; }
+            6% { content: '6'; }
+            7% { content: '7'; }
+            8% { content: '8'; }
+            9% { content: '9'; }
+            10% { content: '10'; }
+            11% { content: '11'; }
+            12% { content: '12'; }
+            13% { content: '13'; }
+            14% { content: '14'; }
+            15% { content: '15'; }
+            16% { content: '16'; }
+            17% { content: '17'; }
+            18% { content: '18'; }
+            19% { content: '19'; }
+            20% { content: '20'; }
+            21% { content: '21'; }
+            22% { content: '22'; }
+            23% { content: '23'; }
+            24% { content: '24'; }
+            25% { content: '25'; }
+            26% { content: '26'; }
+            27% { content: '27'; }
+            28% { content: '28'; }
+            29% { content: '29'; }
+            30% { content: '30'; }
+            31% { content: '31'; }
+            32% { content: '32'; }
+            33% { content: '33'; }
+            34% { content: '34'; }
+            35% { content: '35'; }
+            36% { content: '36'; }
+            37% { content: '37'; }
+            38% { content: '38'; }
+            39% { content: '39'; }
+            40% { content: '40'; }
+            41% { content: '41'; }
+            42% { content: '42'; }
+            43% { content: '43'; }
+            44% { content: '44'; }
+            45% { content: '45'; }
+            46% { content: '46'; }
+            47% { content: '47'; }
+            48% { content: '48'; }
+            49% { content: '49'; }
+            50% { content: '50'; }
+            51% { content: '51'; }
+            52% { content: '52'; }
+            53% { content: '53'; }
+            54% { content: '54'; }
+            55% { content: '55'; }
+            56% { content: '56'; }
+            57% { content: '57'; }
+            58% { content: '58'; }
+            59% { content: '59'; }
+            60% { content: '60'; }
+            61% { content: '61'; }
+            62% { content: '62'; }
+            63% { content: '63'; }
+            64% { content: '64'; }
+            65% { content: '65'; }
+            66% { content: '66'; }
+            67% { content: '67'; }
+            68% { content: '68'; }
+            69% { content: '69'; }
+            70% { content: '70'; }
+            71% { content: '71'; }
+            72% { content: '72'; }
+            73% { content: '73'; }
+            74% { content: '74'; }
+            75% { content: '75'; }
+            76% { content: '76'; }
+            77% { content: '77'; }
+            78% { content: '78'; }
+            79% { content: '79'; }
+            80% { content: '80'; }
+            81% { content: '81'; }
+            82% { content: '82'; }
+            83% { content: '83'; }
+            84% { content: '84'; }
+            85% { content: '85'; }
+            86% { content: '86'; }
+            87% { content: '87'; }
+            88% { content: '88'; }
+            89% { content: '89'; }
+            90% { content: '90'; }
+            91% { content: '91'; }
+            92% { content: '92'; }
+            93% { content: '93'; }
+            94% { content: '94'; }
+            95% { content: '95'; }
+            96% { content: '96'; }
+            97% { content: '97'; }
+            98% { content: '98'; }
+            99% { content: '99'; }
+            100% { content: '100'; }
+        }
+    </style>
+</head>
+<body>
+    <div class="counter-container">
+        <h1 class="counter-title">CSS Counter Animation</h1>
+        
+        <div class="counter-wrapper">
+            <span class="counter counter-animated" id="mainCounter">0</span>
+        </div>
+        
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+        
+        <button class="restart-btn" onclick="restartAnimation()">Перезапустить</button>
+        
+        <div class="counter-section">
+            <h3>Вариант с пошаговой анимацией:</h3>
+            <span class="smooth-counter"></span>
+        </div>
+    </div>
+
+    <script>
+        // JavaScript для перезапуска анимации
+        function restartAnimation() {
+            const counter = document.getElementById('mainCounter');
+            const progressFill = document.getElementById('progressFill');
+            
+            // Удаляем классы
+            counter.classList.remove('counter-animated');
+            counter.classList.remove('counter-complete');
+            progressFill.style.animation = 'none';
+            
+            // Принудительная перерисовка
+            void counter.offsetWidth;
+            void progressFill.offsetWidth;
+            
+            // Добавляем классы заново
+            counter.classList.add('counter-animated');
+            progressFill.style.animation = 'progressAnimation 5s ease-out forwards';
+            
+            // Добавляем пульсацию после завершения
+            setTimeout(() => {
+                counter.classList.add('counter-complete');
+            }, 5000);
+        }
+
+        // Добавляем пульсацию при первой загрузке
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                document.getElementById('mainCounter').classList.add('counter-complete');
+            }, 5000);
+        });
+    </script>
+</body>
+</html>

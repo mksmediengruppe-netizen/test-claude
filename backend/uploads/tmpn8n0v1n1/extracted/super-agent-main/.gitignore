@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+*.bak
+*_backup.py
+*_v4_backup.py
+*_v5.py
+venv/
+.env
+data/
+*.db

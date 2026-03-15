@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Анимированный CSS-счётчик</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 60px 80px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 40px;
+            font-size: 28px;
+        }
+
+        .counter-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        .counter {
+            font-size: 120px;
+            font-weight: bold;
+            color: #667eea;
+            display: inline-block;
+            counter-reset: num;
+            animation: countUp 5s ease-out forwards;
+        }
+
+        .counter::after {
+            content: counter(num);
+            counter-increment: num 1;
+            animation: counterValue 5s steps(100) forwards;
+        }
+
+        @keyframes counterValue {
+            0% {
+                counter-increment: num 0;
+            }
+            100% {
+                counter-increment: num 100;
+            }
+        }
+
+        @keyframes countUp {
+            0% {
+                opacity: 0;
+                transform: scale(0.5);
+            }
+            10% {
+                opacity: 1;
+                transform: scale(1.1);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .percent {
+            font-size: 60px;
+            color: #764ba2;
+            animation: fadeIn 1s ease-out 4s forwards;
+            opacity: 0;
+        }
+
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+            }
+        }
+
+        .progress-bar {
+            width: 300px;
+            height: 10px;
+            background: #e0e0e0;
+            border-radius: 5px;
+            margin: 30px auto;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 5px;
+            width: 0%;
+            animation: progressFill 5s ease-out forwards;
+        }
+
+        @keyframes progressFill {
+            to {
+                width: 100%;
+            }
+        }
+
+        .label {
+            color: #666;
+            font-size: 18px;
+            margin-top: 20px;
+            animation: slideUp 0.5s ease-out 5s forwards;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        @keyframes slideUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Второй вариант счётчика с цифрами */
+        .counter-2 {
+            font-size: 80px;
+            font-weight: bold;
+            color: #764ba2;
+            margin-top: 50px;
+            display: inline-block;
+            position: relative;
+        }
+
+        .counter-2::before {
+            content: "0";
+            animation: numberChange 5s steps(100) forwards;
+        }
+
+        @keyframes numberChange {
+            0% { content: "0"; }
+            10% { content: "10"; }
+            20% { content: "20"; }
+            30% { content: "30"; }
+            40% { content: "40"; }
+            50% { content: "50"; }
+            60% { content: "60"; }
+            70% { content: "70"; }
+            80% { content: "80"; }
+            90% { content: "90"; }
+            100% { content: "100"; }
+        }
+
+        .divider {
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #ddd, transparent);
+            margin: 40px 0;
+        }
+
+        .subtitle {
+            color: #999;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 CSS-счётчик с @keyframes</h1>
+        
+        <div class="counter-wrapper">
+            <span class="counter"></span>
+            <span class="percent">%</span>
+        </div>
+        
+        <div class="progress-bar">
+            <div class="progress-fill"></div>
+        </div>
+        
+        <p class="label">✨ Анимация завершена!</p>
+        
+        <div class="divider"></div>
+        
+        <p class="subtitle">Альтернативный вариант:</p>
+        <div class="counter-2"></div>
+    </div>
+</body>
+</html>

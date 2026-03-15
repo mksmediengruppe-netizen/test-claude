@@ -1,0 +1,31 @@
+[Unit]
+Description=Super Agent v4.0 API Server
+After=network.target
+
+[Service]
+Type=notify
+User=root
+Group=root
+WorkingDirectory=/var/www/super-agent/backend
+ExecStart=/var/www/super-agent/backend/venv/bin/gunicorn wsgi:app \
+    --bind 127.0.0.1:3501 \
+    --workers 2 \
+    --worker-class gevent \
+    --timeout 120 \
+    --graceful-timeout 30 \
+    --keep-alive 5 \
+    --max-requests 1000 \
+    --max-requests-jitter 50 \
+    --access-logfile /var/log/super-agent-access.log \
+    --error-logfile /var/log/super-agent-error.log
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+Restart=always
+RestartSec=5
+
+Environment=OPENROUTER_API_KEY=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
+Environment=DATA_DIR=/var/www/super-agent/backend/data
+Environment=UPLOAD_DIR=/var/www/super-agent/backend/uploads
+
+[Install]
+WantedBy=multi-user.target

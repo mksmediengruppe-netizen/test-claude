@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Agent v6.0 — AI-инженер</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%236366f1'/><text x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-weight='bold'>SA</text></svg>">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=1773425967">
+    <!-- Markdown rendering -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
+</head>
+<body>
+
+<!-- ═══ Login Screen ═══ -->
+<div id="loginScreen" class="login-screen" style="display:none">
+    <canvas id="loginCanvas" class="login-canvas"></canvas>
+    <div class="login-orb login-orb-1"></div>
+    <div class="login-orb login-orb-2"></div>
+    <div class="login-orb login-orb-3"></div>
+    
+    <div class="login-container">
+        <div class="login-branding">
+            <div class="login-brand-logo">
+                <div class="brand-icon">
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <rect width="48" height="48" rx="12" fill="url(#grad1)"/>
+                        <defs><linearGradient id="grad1" x1="0" y1="0" x2="48" y2="48"><stop offset="0%" stop-color="#818cf8"/><stop offset="100%" stop-color="#a855f7"/></linearGradient></defs>
+                        <text x="24" y="32" font-size="22" text-anchor="middle" fill="white" font-weight="bold" font-family="Inter, sans-serif">SA</text>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="brand-title">Super Agent</h1>
+                    <p class="brand-version">v6.0 Ultimate</p>
+                </div>
+            </div>
+            <p class="brand-description">Автономный AI-инженер нового поколения с LangGraph StateGraph</p>
+            <div class="brand-features">
+                <div class="brand-feature"><span class="feature-icon">🤖</span><div><strong>4 AI-агента</strong><span>Architect, Coder, Reviewer, QA</span></div></div>
+                <div class="brand-feature"><span class="feature-icon">🔗</span><div><strong>SSH + Self-Healing</strong><span>Авто-исправление ошибок</span></div></div>
+                <div class="brand-feature"><span class="feature-icon">🧠</span><div><strong>Vector Memory</strong><span>Cross-chat обучение</span></div></div>
+                <div class="brand-feature"><span class="feature-icon">📂</span><div><strong>File Versioning</strong><span>Diff, rollback, история</span></div></div>
+            </div>
+        </div>
+        
+        <div class="login-card">
+            <div class="login-card-header">
+                <h2 class="login-title">Добро пожаловать</h2>
+                <p class="login-subtitle">Войдите в свой аккаунт для начала работы</p>
+            </div>
+            <form id="loginForm" onsubmit="event.preventDefault(); doLogin();">
+                <div class="login-field">
+                    <label class="login-label" for="loginEmail">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                        Email
+                    </label>
+                    <input type="email" id="loginEmail" class="login-input" placeholder="your@email.com" value="ym@mksmedia.ru" autocomplete="email">
+                </div>
+                <div class="login-field">
+                    <label class="login-label" for="loginPassword">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        Пароль
+                    </label>
+                    <div class="login-password-wrap">
+                        <input type="password" id="loginPassword" class="login-input" placeholder="Введите пароль" autocomplete="current-password">
+                        <button type="button" class="password-toggle" onclick="togglePassword()" tabindex="-1">
+                            <svg id="eyeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="login-options">
+                    <label class="login-remember">
+                        <input type="checkbox" id="rememberMe" checked>
+                        <span class="checkmark"></span>
+                        Запомнить меня
+                    </label>
+                </div>
+                <button type="submit" id="loginBtn" class="login-btn">
+                    <span class="login-btn-text">Войти в систему</span>
+                    <span class="login-btn-loader hidden">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                    </span>
+                </button>
+            </form>
+            <div id="loginError" class="login-error"></div>
+            <div class="login-footer"><p>Powered by <strong>OpenRouter</strong> + Multi-Agent AI</p></div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Main App ═══ -->
+<div id="appContainer" class="app-container hidden" style="display:none">
+<script>
+// Instant show: no login flash if token exists
+(function(){
+    var t = localStorage.getItem('sa_token');
+    var ls = document.getElementById('loginScreen');
+    var ac = document.getElementById('appContainer');
+    if (t) {
+        ls.style.display = 'none';
+        ls.classList.add('hidden');
+        ac.style.display = '';
+        ac.classList.remove('hidden');
+    } else {
+        ls.style.display = '';
+        ls.classList.remove('hidden');
+        ac.style.display = 'none';
+        ac.classList.add('hidden');
+    }
+})();
+</script>
+
+    <!-- ── Sidebar ── -->
+    <aside id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">SA</div>
+            <div style="flex:1">
+                <div class="sidebar-title">Super Agent</div>
+                <div class="sidebar-version">v6.0 Ultimate</div>
+            </div>
+            <button class="sidebar-collapse-btn" onclick="toggleSidebar()" title="Свернуть меню">◀</button>
+        </div>
+
+        <div class="sidebar-search">
+            <input type="text" id="chatSearch" placeholder="Поиск чатов..." oninput="filterChats()">
+        </div>
+
+        <div class="sidebar-chats-label">Последние чаты</div>
+        <div id="chatList" class="sidebar-chats"></div>
+
+        <button class="new-chat-btn" onclick="createNewChat()">✨ Новый чат</button>
+
+        <- First backup verified: database + Collapsible nav menu -->
+        <div class="sidebar-nav-section">
+            <button class="sidebar-nav-toggle" onclick="toggleNavMenu()" title="Меню разделов">
+                <span class="nav-toggle-icon">⚙️</span>
+                <span class="nav-toggle-label">Меню</span>
+                <span class="nav-toggle-arrow" id="navToggleArrow">▲</span>
+            </button>
+            <div class="sidebar-nav" id="sidebarNavMenu">
+                <button class="nav-item active" data-tab="chat" onclick="switchTab('chat')"><span class="nav-icon">💬</span> Чат</button>
+                <button class="nav-item" data-tab="canvas" onclick="switchTab('canvas')"><span class="nav-icon">📝</span> Canvas</button>
+                <button class="nav-item" data-tab="templates" onclick="switchTab('templates')"><span class="nav-icon">📋</span> Шаблоны</button>
+                <button class="nav-item" data-tab="settings" onclick="switchTab('settings')"><span class="nav-icon">⚙️</span> Настройки</button>
+                <button class="nav-item" data-tab="memory" onclick="switchTab('memory')"><span class="nav-icon">🧠</span> Память</button>
+                <button class="nav-item" data-tab="versions" onclick="switchTab('versions')"><span class="nav-icon">📂</span> Версии</button>
+                <button class="nav-item" data-tab="connectors" onclick="switchTab('connectors')"><span class="nav-icon">🔗</span> Коннекторы</button>
+                <button class="nav-item" data-tab="agents" onclick="switchTab('agents')"><span class="nav-icon">🤖</span> Агенты</button>
+                <button class="nav-item" data-tab="analytics" onclick="switchTab('analytics')"><span class="nav-icon">📊</span> Аналитика</button>
+                <button class="nav-item" data-tab="audit" onclick="switchTab('audit')"><span class="nav-icon">📜</span> Аудит</button>
+                <button class="nav-item" data-tab="admin" onclick="switchTab('admin')"><span class="nav-icon">👤</span> Админ-панель</button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ── Main Area ── -->
+    <div class="main-area">
+        <!-- Top bar -->
+        <div class="topbar">
+            <button class="topbar-toggle" onclick="toggleSidebar()" title="Меню">☰</button>
+
+            <div class="topbar-tabs">
+                <button class="topbar-tab active" data-tab="chat" onclick="switchTab('chat')">💬 Чат</button>
+                <button class="topbar-tab" data-tab="canvas" onclick="switchTab('canvas')">📝 Canvas</button>
+                <button class="topbar-tab" data-tab="templates" onclick="switchTab('templates')">📋 Шаблоны</button>
+                <button class="topbar-tab" data-tab="settings" onclick="switchTab('settings')">⚙️ Настройки</button>
+                <button class="topbar-tab" data-tab="memory" onclick="switchTab('memory')">🧠 Память</button>
+                <button class="topbar-tab" data-tab="versions" onclick="switchTab('versions')">📂 Версии</button>
+                <button class="topbar-tab" data-tab="connectors" onclick="switchTab('connectors')">🔗 Коннекторы</button>
+                <button class="topbar-tab" data-tab="agents" onclick="switchTab('agents')">🤖 Агенты</button>
+                <button class="topbar-tab" data-tab="analytics" onclick="switchTab('analytics')">📊 Аналитика</button>
+                <button class="topbar-tab" data-tab="audit" onclick="switchTab('audit')">📜 Аудит</button>
+                <button class="topbar-tab" data-tab="admin" onclick="switchTab('admin')">👤 Админ</button>
+            </div>
+
+            <div class="topbar-spacer"></div>
+
+            <div class="topbar-actions">
+                <button class="topbar-btn theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" title="Сменить тему">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                </button>
+                <button class="topbar-btn" onclick="togglePreview()" title="Live Preview">🖥️ Preview</button>
+                <button class="topbar-btn" onclick="exportCurrentChat()" title="Экспорт">📤 Export</button>
+                <button class="topbar-btn" id="userBtn" onclick="doLogout()">🚪 Выход</button>
+            </div>
+        </div>
+
+        <!-- Model selector bar (dropdown like Manus) -->
+        <div id="modelChipsBar" class="model-selector-bar">
+            <div class="model-dropdown-wrap">
+                <button class="model-dropdown-btn" id="modelDropdownBtn" onclick="event.stopPropagation(); toggleModelDropdown(event)">
+                    <span class="model-dropdown-dot" id="modelDot"></span>
+                    <span id="modelDropdownLabel">Премиум — MiniMax M2.5</span>
+                    <svg class="model-dropdown-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <div class="model-dropdown-menu hidden" id="modelDropdownMenu">
+                    <div class="model-dropdown-item" data-variant="original" onclick="selectVariantDropdown('original')">
+                        <span class="model-dropdown-dot red"></span>
+                        <div class="model-dropdown-info">
+                            <div class="model-dropdown-name">Оригинал — Grok Code Fast 1</div>
+                            <div class="model-dropdown-desc">Качество: 72.1% · ~$2,200/мес · Самый мощный</div>
+                        </div>
+                    </div>
+                    <div class="model-dropdown-item active" data-variant="premium" onclick="selectVariantDropdown('premium')">
+                        <span class="model-dropdown-dot green"></span>
+                        <div class="model-dropdown-info">
+                            <div class="model-dropdown-name">Премиум — MiniMax M2.5</div>
+                            <div class="model-dropdown-desc">Качество: 80.2% · ~$1,750/мес · Лучшее соотношение</div>
+                        </div>
+                        <span class="model-dropdown-badge">Рекомендуется</span>
+                    </div>
+                    <div class="model-dropdown-item" data-variant="budget" onclick="selectVariantDropdown('budget')">
+                        <span class="model-dropdown-dot blue"></span>
+                        <div class="model-dropdown-info">
+                            <div class="model-dropdown-name">Бюджет — DeepSeek V3.2</div>
+                            <div class="model-dropdown-desc">Качество: 75.8% · ~$750/мес · Самый дешёвый</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="enhanced-toggle">
+                <span>Усиленная проверка (4 агента)</span>
+                <div id="enhancedToggle" class="toggle-switch" onclick="toggleEnhanced()"></div>
+            </div>
+        </div>
+
+        <!-- Tab content: Chat -->
+        <div id="tabChat" class="chat-container">
+            <!-- Drag & Drop overlay -->
+            <div id="dropOverlay" class="drop-overlay hidden">
+                <div class="drop-overlay-content">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <h3>Перетащите файлы сюда</h3>
+                    <p>PDF, Word, Excel, картинки, код, архивы</p>
+                </div>
+            </div>
+            <div id="chatMessages" class="chat-messages">
+                <!-- Welcome message -->
+                <div class="message assistant">
+                    <div class="message-avatar">SA</div>
+                    <div class="message-body">
+                        <div class="message-content">
+                            👋 <strong>Привет! Я Super Agent v6.0</strong> — ваш автономный AI-инженер.<br><br>
+                            <strong>Я могу:</strong><br>
+                            • 📎 <strong>Читать любые файлы</strong> — PDF, Word, Excel, картинки, код, архивы<br>
+                            • 📄 <strong>Создавать файлы</strong> — Word, PDF, Excel, HTML, код<br>
+                            • 📊 <strong>Анализировать данные</strong> — графики, статистика, отчёты<br>
+                            • 🐍 <strong>Code Interpreter</strong> — запуск Python кода для анализа<br>
+                            • 🔍 <strong>Поиск в интернете</strong> — актуальная информация с цитатами<br>
+                            • 🎨 <strong>Артефакты</strong> — живой HTML/SVG/React прямо в чате<br>
+                            • 🔗 <strong>SSH + Browser</strong> — автономный деплой и мониторинг<br><br>
+                            <em>Перетащите файл в чат или нажмите 📎 чтобы прикрепить.</em>
+                        </div>
+                        <div class="message-meta">
+                            <span>🟢 MiniMax M2.5</span>
+                            <span>•</span>
+                            <span>только что</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scroll to bottom button -->
+            <button id="scrollDownBtn" class="scroll-down-btn hidden" onclick="scrollToBottom()" title="Перейти вниз">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+
+            <!-- Input area -->
+            <div class="chat-input-area">
+                <div class="quick-templates">
+                    <button class="template-btn" onclick="sendTemplate('Сделай лендинг для SaaS продукта с hero, фичами и CTA')">🚀 Лендинг SaaS</button>
+                    <button class="template-btn" onclick="sendTemplate('Создай REST API на FastAPI с CRUD и авторизацией')">⚡ REST API</button>
+                    <button class="template-btn" onclick="sendTemplate('Сделай дашборд на React с графиками и таблицами')">📊 Дашборд</button>
+                    <button class="template-btn" onclick="sendTemplate('Создай Telegram бота на Python с inline-кнопками')">🤖 Telegram Bot</button>
+                    <button class="template-btn" onclick="sendTemplate('Создай n8n workflow для автоматизации')">🔄 n8n Workflow</button>
+                    <button class="template-btn" onclick="sendTemplate('Подключись к серверу и покажи статус системы')">🔗 SSH Статус</button>
+                    <button class="template-btn" onclick="sendTemplate('Установи nginx и настрой реверс-прокси')">🌐 Nginx Setup</button>
+                    <button class="template-btn" onclick="sendTemplate('Проверь сайт https://example.com и покажи статус')">🔍 Проверка сайта</button>
+                </div>
+
+                <!-- Progress indicator -->
+                <div id="generationProgress" class="generation-progress hidden">
+                    <div class="progress-bar-track">
+                        <div class="progress-bar-fill" id="progressBarFill"></div>
+                    </div>
+                    <div class="progress-status" id="progressStatus">
+                        <span class="progress-spinner"></span>
+                        <span id="progressText">Инициализация...</span>
+                    </div>
+                </div>
+
+                <!-- Input wrapper -->
+                <div class="input-wrapper">
+                    <!-- Attached files preview -->
+                    <div id="attachedFiles" class="attached-files hidden"></div>
+
+                    <textarea id="chatInput" placeholder="Опишите задачу..." rows="1" oninput="autoResize(this)" onkeydown="handleInputKey(event)"></textarea>
+
+                    <div class="input-bottom-bar">
+                        <div class="input-actions-left">
+                            <button class="input-icon-btn" onclick="triggerFileUpload()" title="Прикрепить файл">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                            </button>
+                            <input type="file" id="fileInput" style="display:none" onchange="handleFileUpload(this)" multiple accept=".zip,.tar,.gz,.py,.js,.ts,.html,.css,.json,.md,.txt,.yaml,.yml,.toml,.jsx,.tsx,.vue,.svelte,.go,.rs,.rb,.php,.java,.cpp,.c,.h,.sql,.doc,.docx,.pdf,.png,.jpg,.jpeg,.gif,.webp">
+                            <button class="input-icon-btn" id="voiceInputBtn" onclick="toggleVoiceInput()" title="Голосовой ввод">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                            </button>
+                        </div>
+                        <div class="input-hint">Enter — отправить, Shift+Enter — новая строка | Ctrl+K — команды</div>
+                        <button class="send-circle-btn" id="sendBtn" onclick="sendMessage()" title="Отправить">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab content: Settings -->
+        <div id="tabSettings" class="settings-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:24px;">⚙️ Настройки</h2>
+
+            <div class="settings-section">
+                <div class="settings-section-title">🤖 Вариант системы</div>
+                <div class="settings-card" data-variant="original" onclick="selectVariantCard('original')">
+                    <div class="settings-card-header">
+                        <div class="settings-radio"></div>
+                        <span class="settings-card-title">🔴 Оригинал — Grok Code Fast 1</span>
+                    </div>
+                    <div class="settings-card-desc">Качество: 72.1% · ~$2,200/мес · Самый мощный</div>
+                </div>
+                <div class="settings-card selected" data-variant="premium" onclick="selectVariantCard('premium')">
+                    <div class="settings-card-header">
+                        <div class="settings-radio"></div>
+                        <span class="settings-card-title">🟢 Премиум — MiniMax M2.5</span>
+                        <span class="badge badge-recommended">⭐ Рекомендуется</span>
+                    </div>
+                    <div class="settings-card-desc">Качество: 80.2% · ~$1,750/мес · Лучшее соотношение цена/качество</div>
+                </div>
+                <div class="settings-card" data-variant="budget" onclick="selectVariantCard('budget')">
+                    <div class="settings-card-header">
+                        <div class="settings-radio"></div>
+                        <span class="settings-card-title">🔵 Бюджет — DeepSeek V3.2</span>
+                    </div>
+                    <div class="settings-card-desc">Качество: 75.8% · ~$750/мес · Самый дешёвый</div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">💬 Chat-модель (для русского языка)</div>
+                <div class="settings-card selected" data-chatmodel="qwen3" onclick="selectChatModel('qwen3')">
+                    <div class="settings-card-header">
+                        <div class="settings-radio"></div>
+                        <span class="settings-card-title">Qwen3 235B</span>
+                        <span class="badge badge-recommended">⭐ Лучший русский</span>
+                    </div>
+                    <div class="settings-card-desc">RU ⭐⭐⭐⭐⭐ · $0.10/$0.60 · ~400ms</div>
+                </div>
+                <div class="settings-card" data-chatmodel="deepseek" onclick="selectChatModel('deepseek')">
+                    <div class="settings-card-header">
+                        <div class="settings-radio"></div>
+                        <span class="settings-card-title">DeepSeek V3.2</span>
+                    </div>
+                    <div class="settings-card-desc">RU ⭐⭐⭐⭐⭐ · $0.26/$0.38 · ~350ms</div>
+                </div>
+                <div class="settings-card" data-chatmodel="gpt5nano" onclick="selectChatModel('gpt5nano')">
+                    <div class="settings-card-header">
+                        <div class="settings-radio"></div>
+                        <span class="settings-card-title">GPT-5 Nano</span>
+                    </div>
+                    <div class="settings-card-desc">RU ⭐⭐⭐⭐ · $0.05/$0.40 · ~300ms · Самый быстрый</div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">🛡️ Режим проверки</div>
+                <div class="settings-card" id="enhancedCard" onclick="toggleEnhancedSetting()">
+                    <div class="settings-card-header">
+                        <div id="enhancedCheckbox" style="width:18px;height:18px;border:2px solid var(--border-color);border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;"></div>
+                        <span class="settings-card-title">Усиленная проверка (4 агента)</span>
+                    </div>
+                    <div class="settings-card-desc">Architect → Coder → Reviewer → QA · +150% к стоимости · Максимальное качество</div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">🎨 Design Pro</div>
+                <div class="settings-card" id="designProCard" onclick="toggleDesignPro()">
+                    <div class="settings-card-header">
+                        <div id="designProCheckbox" style="width:18px;height:18px;border:2px solid var(--border-color);border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;"></div>
+                        <span class="settings-card-title">Включить Design Pro</span>
+                    </div>
+                    <div class="settings-card-desc">Референсы, AI-изображения, Vision-анализ · +$10-20/мес</div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">🎨 Тема оформления</div>
+                <div class="theme-toggle-cards">
+                    <div class="settings-card theme-card" id="themeDarkCard" onclick="setTheme('dark')">
+                        <div class="settings-card-header">
+                            <div class="settings-radio"></div>
+                            <span class="settings-card-title">🌙 Тёмная тема</span>
+                        </div>
+                    </div>
+                    <div class="settings-card theme-card" id="themeLightCard" onclick="setTheme('light')">
+                        <div class="settings-card-header">
+                            <div class="settings-radio"></div>
+                            <span class="settings-card-title">☀️ Светлая тема</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">🔗 SSH Подключение (для автономного режима)</div>
+                <div class="settings-card" style="cursor:default">
+                    <div class="settings-card-desc" style="margin-bottom:12px;">Укажите данные сервера, чтобы агент мог автоматически выполнять команды, создавать файлы и деплоить приложения.</div>
+                    <div style="display:flex;flex-direction:column;gap:10px;">
+                        <div style="display:flex;gap:10px;">
+                            <input type="text" id="sshHost" class="settings-input" placeholder="IP или hostname сервера" style="flex:2;">
+                            <input type="number" id="sshPort" class="settings-input" placeholder="Порт (22)" value="22" style="flex:1;max-width:100px;">
+                        </div>
+                        <div style="display:flex;gap:10px;">
+                            <input type="text" id="sshUser" class="settings-input" placeholder="Логин (root)" value="root" style="flex:1;">
+                            <input type="password" id="sshPassword" class="settings-input" placeholder="Пароль" style="flex:1;">
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <button class="settings-save-btn" onclick="testSSHConnection()" style="flex:1;background:var(--accent-green);padding:8px 16px;font-size:13px;">🔌 Тест подключения</button>
+                            <button class="settings-save-btn" onclick="saveSSHSettings()" style="flex:1;padding:8px 16px;font-size:13px;">💾 Сохранить SSH</button>
+                        </div>
+                        <div id="sshTestResult" class="ssh-test-result" style="display:none;"></div>
+                    </div>
+                </div>
+                <div id="sshServersList" style="margin-top:12px;"></div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">🔑 GitHub Token (для git операций)</div>
+                <div class="settings-card" style="cursor:default">
+                    <input type="password" id="githubToken" class="settings-input" placeholder="ghp_xxxxxxxxxxxx">
+                </div>
+            </div>
+
+            <button class="settings-save-btn" onclick="saveSettings()">💾 Сохранить все настройки</button>
+        </div>
+
+        <!-- Tab content: Analytics -->
+        <div id="tabAnalytics" class="analytics-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:24px;">📊 Аналитика</h2>
+            <div id="analyticsContent">
+                <div class="analytics-grid" id="statsGrid"></div>
+                <div id="comparisonSection"></div>
+                <div id="chatStatsSection"></div>
+            </div>
+        </div>
+
+        <!-- Tab content: Memory -->
+        <div id="tabMemory" class="settings-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:24px;">🧠 Векторная память</h2>
+            <div class="settings-section">
+                <div class="settings-section-title">🔍 Поиск по памяти</div>
+                <div class="settings-card" style="cursor:default">
+                    <div style="display:flex;gap:10px;margin-bottom:12px;">
+                        <input type="text" id="memorySearchQuery" class="settings-input" placeholder="Поиск по прошлым задачам..." style="flex:1;">
+                        <button class="settings-save-btn" onclick="searchMemory()" style="padding:8px 16px;font-size:13px;">🔍 Найти</button>
+                    </div>
+                    <div id="memorySearchResults" style="display:none;"></div>
+                </div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-title">📊 Статистика памяти</div>
+                <div id="memoryStats" class="analytics-grid"></div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-title">📝 Последние эпизоды</div>
+                <div id="memoryEpisodes"></div>
+            </div>
+        </div>
+
+        <!-- Tab content: Versions -->
+        <div id="tabVersions" class="settings-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:24px;">📂 Версионирование файлов</h2>
+            <div class="settings-section">
+                <div class="settings-section-title">📄 Версионированные файлы</div>
+                <div id="versionedFilesList"></div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-title">📊 Статистика</div>
+                <div id="versionStats" class="analytics-grid"></div>
+            </div>
+            <div class="settings-section" id="versionHistorySection" style="display:none;">
+                <div class="settings-section-title">📝 История версий</div>
+                <div id="versionHistory"></div>
+            </div>
+            <div class="settings-section" id="versionDiffSection" style="display:none;">
+                <div class="settings-section-title">🔍 Diff</div>
+                <pre id="versionDiff" style="background:var(--bg-tertiary);padding:16px;border-radius:8px;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:12px;white-space:pre-wrap;"></pre>
+            </div>
+        </div>
+
+        <!-- Tab content: Admin -->
+        <div id="tabAdmin" class="admin-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:24px;">👤 Админ-панель</h2>
+            <div id="adminStatsGrid" class="analytics-grid" style="margin-bottom:24px;"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <h3 style="font-size:16px;font-weight:600;">Пользователи</h3>
+                <button class="admin-btn" onclick="showCreateUserModal()" style="background:var(--accent-primary);color:white;border:none;padding:8px 16px;border-radius:var(--radius-sm);font-weight:600;">+ Создать</button>
+            </div>
+            <div id="usersTable"></div>
+
+            <div style="margin-top:32px;">
+                <h3 style="font-size:16px;font-weight:600;margin-bottom:16px;">💬 Все чаты и переписки</h3>
+                <div id="adminChatsTable"></div>
+            </div>
+        </div>
+
+        <!-- Tab content: Canvas -->
+        <div id="tabCanvas" class="canvas-panel hidden">
+            <div class="canvas-header">
+                <h2 style="font-size:22px;font-weight:700;margin-bottom:0;">📝 Canvas</h2>
+                <button class="canvas-new-btn" onclick="createNewCanvas()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Новый Canvas
+                </button>
+            </div>
+            <p style="color:var(--text-secondary);margin-bottom:20px;">Итеративные документы — как Google Docs, но с AI. Создавайте и редактируйте документы вместе с агентом.</p>
+            <div id="canvasList" class="canvas-list"></div>
+            <div id="canvasEditor" class="canvas-editor hidden">
+                <div class="canvas-editor-toolbar">
+                    <input type="text" id="canvasTitle" class="canvas-title-input" placeholder="Название документа...">
+                    <select id="canvasType" class="canvas-type-select">
+                        <option value="document">📄 Документ</option>
+                        <option value="code">💻 Код</option>
+                        <option value="markdown">📝 Markdown</option>
+                        <option value="spreadsheet">📊 Таблица</option>
+                    </select>
+                    <button class="canvas-save-btn" onclick="saveCanvas()">💾 Сохранить</button>
+                    <button class="canvas-back-btn" onclick="backToCanvasList()">← Назад</button>
+                </div>
+                <textarea id="canvasContent" class="canvas-content-area" placeholder="Начните писать..."></textarea>
+                <div class="canvas-ai-bar">
+                    <input type="text" id="canvasAiPrompt" class="canvas-ai-input" placeholder="Попросите AI отредактировать, дополнить, переписать...">
+                    <button class="canvas-ai-btn" onclick="canvasAiEdit()">🤖 AI Редактировать</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab content: Templates -->
+        <div id="tabTemplates" class="templates-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:8px;">📋 Шаблоны промптов</h2>
+            <p style="color:var(--text-secondary);margin-bottom:20px;">Готовые шаблоны для частых задач. Нажмите на шаблон, чтобы начать новый чат с ним.</p>
+            <div class="templates-filter">
+                <button class="template-filter-btn active" onclick="filterTemplates('all')">Все</button>
+                <button class="template-filter-btn" onclick="filterTemplates('dev')">💻 Разработка</button>
+                <button class="template-filter-btn" onclick="filterTemplates('analytics')">📊 Аналитика</button>
+                <button class="template-filter-btn" onclick="filterTemplates('creative')">🎨 Креатив</button>
+                <button class="template-filter-btn" onclick="filterTemplates('devops')">⚙️ DevOps</button>
+            </div>
+            <div id="templatesList" class="templates-grid"></div>
+        </div>
+    </div>
+
+        <!-- ── Connectors Panel ── -->
+        <div id="tabConnectors" class="settings-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:8px;">🔗 Коннекторы (MCP)</h2>
+            <p style="color:var(--text-secondary);margin-bottom:20px;">Управление внешними подключениями и MCP-серверами</p>
+            <div class="connectors-grid" id="connectorsGrid">
+                <div class="connector-card">
+                    <div class="connector-icon">🐙</div>
+                    <div class="connector-info">
+                        <h3>GitHub</h3>
+                        <p>Интеграция с GitHub репозиториями</p>
+                    </div>
+                    <div class="connector-status">
+                        <label class="toggle-switch"><input type="checkbox" id="connGithub" onchange="toggleConnector('github', this.checked)"><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+                <div class="connector-card">
+                    <div class="connector-icon">💾</div>
+                    <div class="connector-info">
+                        <h3>SSH Серверы</h3>
+                        <p>Подключение к удалённым серверам по SSH</p>
+                    </div>
+                    <div class="connector-status">
+                        <label class="toggle-switch"><input type="checkbox" id="connSSH" checked onchange="toggleConnector('ssh', this.checked)"><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+                <div class="connector-card">
+                    <div class="connector-icon">🌐</div>
+                    <div class="connector-info">
+                        <h3>Web Scraping</h3>
+                        <p>Парсинг и анализ веб-страниц</p>
+                    </div>
+                    <div class="connector-status">
+                        <label class="toggle-switch"><input type="checkbox" id="connWeb" checked onchange="toggleConnector('web', this.checked)"><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+                <div class="connector-card">
+                    <div class="connector-icon">🗄️</div>
+                    <div class="connector-info">
+                        <h3>Qdrant Vector DB</h3>
+                        <p>Векторная база данных для памяти</p>
+                    </div>
+                    <div class="connector-status">
+                        <label class="toggle-switch"><input type="checkbox" id="connQdrant" onchange="toggleConnector('qdrant', this.checked)"><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+                <div class="connector-card">
+                    <div class="connector-icon">📧</div>
+                    <div class="connector-info">
+                        <h3>Email / SMTP</h3>
+                        <p>Отправка уведомлений по email</p>
+                    </div>
+                    <div class="connector-status">
+                        <label class="toggle-switch"><input type="checkbox" id="connEmail" onchange="toggleConnector('email', this.checked)"><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+                <div class="connector-card">
+                    <div class="connector-icon">📁</div>
+                    <div class="connector-info">
+                        <h3>S3 / Файловое хранилище</h3>
+                        <p>Внешнее хранилище файлов</p>
+                    </div>
+                    <div class="connector-status">
+                        <label class="toggle-switch"><input type="checkbox" id="connS3" onchange="toggleConnector('s3', this.checked)"><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top:20px;">
+                <button class="settings-save-btn" onclick="addCustomConnector()">➕ Добавить MCP-сервер</button>
+            </div>
+        </div>
+
+        <!-- ── Custom Agents Panel ── -->
+        <div id="tabAgents" class="settings-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:8px;">🤖 Пользовательские агенты</h2>
+            <p style="color:var(--text-secondary);margin-bottom:20px;">Создавайте собственных агентов с кастомными системными промптами, инструментами и параметрами</p>
+            <div class="agents-list" id="agentsList">
+                <div class="agent-card">
+                    <div class="agent-card-header">
+                        <div class="agent-avatar">🏗️</div>
+                        <div>
+                            <h3>Architect</h3>
+                            <span class="agent-badge system">Системный</span>
+                        </div>
+                    </div>
+                    <p>Планирование архитектуры, декомпозиция задач, выбор технологий</p>
+                    <div class="agent-tools">📝 Plan • 🔍 Research • 📁 Files</div>
+                </div>
+                <div class="agent-card">
+                    <div class="agent-card-header">
+                        <div class="agent-avatar">💻</div>
+                        <div>
+                            <h3>Coder</h3>
+                            <span class="agent-badge system">Системный</span>
+                        </div>
+                    </div>
+                    <p>Написание кода, рефакторинг, интеграция API</p>
+                    <div class="agent-tools">💻 Code • 🔧 SSH • 🌐 Web</div>
+                </div>
+                <div class="agent-card">
+                    <div class="agent-card-header">
+                        <div class="agent-avatar">🔍</div>
+                        <div>
+                            <h3>Reviewer</h3>
+                            <span class="agent-badge system">Системный</span>
+                        </div>
+                    </div>
+                    <p>Проверка кода, поиск ошибок, оптимизация</p>
+                    <div class="agent-tools">🔍 Review • 🛡️ Security • 📊 Metrics</div>
+                </div>
+                <div class="agent-card">
+                    <div class="agent-card-header">
+                        <div class="agent-avatar">✅</div>
+                        <div>
+                            <h3>QA</h3>
+                            <span class="agent-badge system">Системный</span>
+                        </div>
+                    </div>
+                    <p>Финальная проверка, тестирование, валидация</p>
+                    <div class="agent-tools">✅ Test • 📊 Report • 🔄 Retry</div>
+                </div>
+            </div>
+            <div style="margin-top:20px;">
+                <button class="settings-save-btn" onclick="showCreateAgentModal()">➕ Создать агента</button>
+            </div>
+        </div>
+
+        <!-- ── Audit Log Panel ── -->
+        <div id="tabAudit" class="settings-panel hidden">
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:8px;">📜 Журнал аудита</h2>
+            <p style="color:var(--text-secondary);margin-bottom:20px;">История всех действий в системе и управление GDPR</p>
+            <div class="audit-controls" style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+                <select id="auditFilter" onchange="loadAuditLogs()" style="padding:8px 12px;border-radius:8px;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border-color);">
+                    <option value="all">Все события</option>
+                    <option value="auth">🔐 Авторизация</option>
+                    <option value="chat">💬 Чаты</option>
+                    <option value="file">📁 Файлы</option>
+                    <option value="settings">⚙️ Настройки</option>
+                    <option value="security">🛡️ Безопасность</option>
+                </select>
+                <button class="settings-save-btn" onclick="exportAuditLogs()">📤 Экспорт логов</button>
+                <button class="settings-save-btn" style="background:var(--danger);" onclick="showGDPRPanel()">🛡️ GDPR Управление</button>
+            </div>
+            <div id="auditLogList" class="audit-log-list" style="max-height:500px;overflow-y:auto;">
+                <div class="audit-entry" style="padding:12px;border-bottom:1px solid var(--border-color);display:flex;gap:12px;align-items:center;">
+                    <span style="font-size:20px;">🔐</span>
+                    <div style="flex:1;">
+                        <div style="font-weight:600;">Login — admin@example.com</div>
+                        <div style="color:var(--text-secondary);font-size:12px;">IP: 127.0.0.1 • User-Agent: Chrome/120</div>
+                    </div>
+                    <div style="color:var(--text-secondary);font-size:12px;white-space:nowrap;">Только что</div>
+                </div>
+                <div style="padding:40px;text-align:center;color:var(--text-secondary);">
+                    Нажмите кнопку ниже для загрузки полного журнала
+                </div>
+            </div>
+            <div style="margin-top:16px;text-align:center;">
+                <button class="settings-save-btn" onclick="loadAuditLogs()">🔄 Загрузить журнал</button>
+            </div>
+
+            <!-- GDPR Modal -->
+            <div id="gdprModal" class="modal-overlay hidden" style="display:none;">
+                <div class="modal-content" style="max-width:500px;">
+                    <h3 style="margin-bottom:16px;">🛡️ GDPR Управление данными</h3>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <button class="settings-save-btn" onclick="gdprExportData()">📥 Экспорт моих данных (DSAR)</button>
+                        <button class="settings-save-btn" onclick="gdprAnonymize()">👤 Анонимизировать мои данные</button>
+                        <button class="settings-save-btn" style="background:var(--danger);" onclick="gdprDeleteAll()">🗑️ Удалить все мои данные (Right to be Forgotten)</button>
+                        <button class="settings-save-btn" style="background:var(--bg-tertiary);" onclick="hideGDPRPanel()">✖ Закрыть</button>
+                    </div>
+                    <p style="margin-top:12px;font-size:12px;color:var(--text-secondary);">В соответствии с GDPR (General Data Protection Regulation), вы имеете право на доступ, исправление и удаление ваших персональных данных.</p>
+                </div>
+            </div>
+        </div>
+
+    <!-- ── Preview Panel ── -->
+    <div id="previewPanel" class="preview-panel hidden">
+        <div class="preview-header">
+            <div class="preview-status"><div class="dot"></div><span>Live Preview</span></div>
+            <button class="preview-close" onclick="togglePreview()">✕</button>
+        </div>
+        <div class="preview-tabs">
+            <button class="preview-tab active" onclick="switchPreviewTab('render')">🌐 Render</button>
+            <button class="preview-tab" onclick="switchPreviewTab('code')">📝 Code</button>
+            <button class="preview-tab" onclick="switchPreviewTab('console')">🖥️ Console</button>
+        </div>
+        <div class="preview-toolbar">
+            <div class="preview-toolbar-btns">
+                <button class="preview-toolbar-btn" onclick="refreshPreview()">🔄 Refresh</button>
+                <button class="preview-toolbar-btn" onclick="openPreviewNewTab()">↗ Open</button>
+            </div>
+            <div class="preview-toolbar-btns">
+                <button class="preview-toolbar-btn active" data-device="desktop" onclick="setPreviewDevice('desktop')">🖥️</button>
+                <button class="preview-toolbar-btn" data-device="tablet" onclick="setPreviewDevice('tablet')">📱</button>
+                <button class="preview-toolbar-btn" data-device="mobile" onclick="setPreviewDevice('mobile')">📲</button>
+            </div>
+        </div>
+        <div class="preview-body" id="previewBody">
+            <div class="preview-placeholder" id="previewPlaceholder">
+                <div class="icon">🌐</div>
+                <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Live Preview</div>
+                <div style="font-size:12px;">Нажмите 👁 Preview у блока кода</div>
+            </div>
+            <iframe id="previewIframe" class="preview-iframe hidden"></iframe>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Create User Modal ═══ -->
+<div id="createUserModal" class="modal-overlay">
+    <div class="modal" style="max-width:480px;">
+        <div class="modal-title">➕ Создать пользователя</div>
+        <input type="email" id="newUserEmail" class="settings-input" placeholder="Email" style="margin-bottom:10px;">
+        <input type="text" id="newUserName" class="settings-input" placeholder="Имя" style="margin-bottom:10px;">
+        <input type="password" id="newUserPassword" class="settings-input" placeholder="Пароль" style="margin-bottom:10px;">
+        <div style="display:flex;gap:10px;margin-bottom:10px;">
+            <select id="newUserRole" class="settings-input" style="flex:1;">
+                <option value="user">👤 Пользователь</option>
+                <option value="admin">👑 Админ</option>
+                <option value="viewer">👁 Наблюдатель</option>
+            </select>
+            <input type="number" id="newUserLimit" class="settings-input" placeholder="Лимит $/мес" value="100" style="flex:1;">
+        </div>
+        <div style="margin-bottom:16px;">
+            <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-secondary);">Права доступа:</div>
+            <div style="display:flex;flex-wrap:wrap;gap:12px;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                    <input type="checkbox" id="newUserPermSSH" checked> 🔗 SSH
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                    <input type="checkbox" id="newUserPermBrowser" checked> 🌐 Browser
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                    <input type="checkbox" id="newUserPermEnhanced"> 🧠 4-Agent Mode
+                </label>
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="admin-btn" onclick="closeModal('createUserModal')">Отмена</button>
+            <button class="settings-save-btn" onclick="createUser()">Создать</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Edit User Modal ═══ -->
+<div id="editUserModal" class="modal-overlay">
+    <div class="modal" style="max-width:480px;">
+        <div class="modal-title">✏️ Редактировать пользователя</div>
+        <input type="hidden" id="editUserId">
+        <input type="text" id="editUserName" class="settings-input" placeholder="Имя" style="margin-bottom:10px;">
+        <input type="password" id="editUserPassword" class="settings-input" placeholder="Новый пароль (оставьте пустым)" style="margin-bottom:10px;">
+        <div style="display:flex;gap:10px;margin-bottom:10px;">
+            <select id="editUserRole" class="settings-input" style="flex:1;">
+                <option value="user">👤 Пользователь</option>
+                <option value="admin">👑 Админ</option>
+                <option value="viewer">👁 Наблюдатель</option>
+            </select>
+            <input type="number" id="editUserLimit" class="settings-input" placeholder="Лимит $/мес" style="flex:1;">
+        </div>
+        <div style="margin-bottom:16px;">
+            <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-secondary);">Права доступа:</div>
+            <div style="display:flex;flex-wrap:wrap;gap:12px;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                    <input type="checkbox" id="editUserPermSSH"> 🔗 SSH
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                    <input type="checkbox" id="editUserPermBrowser"> 🌐 Browser
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                    <input type="checkbox" id="editUserPermEnhanced"> 🧠 4-Agent Mode
+                </label>
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="admin-btn" onclick="closeModal('editUserModal')">Отмена</button>
+            <button class="settings-save-btn" onclick="saveEditUser()">Сохранить</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Confirm Delete Modal (universal) ═══ -->
+<div id="confirmDeleteModal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-title">⚠️ Подтверждение удаления</div>
+        <p id="confirmDeleteText" style="color:var(--text-secondary);margin-bottom:16px;font-size:14px;"></p>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="admin-btn" onclick="closeModal('confirmDeleteModal')">Отмена</button>
+            <button class="settings-save-btn" style="background:var(--accent-red);" id="confirmDeleteBtn">🗑 Удалить</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Delete Chat Confirmation Modal ═══ -->
+<div id="deleteChatModal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-title">🗑️ Удалить чат?</div>
+        <p style="color:var(--text-secondary);margin-bottom:8px;font-size:14px;">Вы уверены, что хотите удалить этот чат? Это действие нельзя отменить.</p>
+        <div style="background:var(--bg-tertiary);padding:10px 14px;border-radius:8px;margin-bottom:16px;border:1px solid var(--border-color);">
+            <span style="color:var(--text-primary);font-weight:600;font-size:14px;" id="deleteChatTitle"></span>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="admin-btn" onclick="cancelDeleteChat()">Отмена</button>
+            <button class="settings-save-btn" style="background:var(--accent-red);" onclick="executeDeleteChat()">🗑️ Удалить</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Toast Container ═══ -->
+<div id="toastContainer" class="toast-container"></div>
+
+<script src="app.js?v=1773426369"></script>
+</body>
+</html>

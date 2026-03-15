@@ -1,0 +1,12 @@
+{
+  "name": "John Doe",
+  "age": 30,
+  "skills": ["JavaScript", "Python", "React", "Node.js"],
+  "address": {
+    "street": "123 Main St",
+    "city": "New York",
+    "state": "NY",
+    "zip": "10001"
+  },
+  "is_active": true
+}
