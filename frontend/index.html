@@ -398,9 +398,26 @@ a{color:var(--accent)}
 @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .msg-u,.message.user{flex-direction:row-reverse}
 .message-avatar,.ava{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;background:var(--bg4);color:var(--text)}
-.message-body,.msg-cont{flex:1;min-width:0;overflow:hidden}
+.message-body,.msg-cont{flex:1;min-width:0;overflow:visible}
 .message.user .message-body{display:flex;flex-direction:column;align-items:flex-end}
 .message-content{font-size:15px;line-height:1.7;color:var(--text);letter-spacing:-0.01em}
+.message-content p{margin-bottom:14px}
+.message-content h1,.message-content h2,.message-content h3{margin:18px 0 10px;font-weight:700;line-height:1.3}
+.message-content h1{font-size:22px}.message-content h2{font-size:19px}.message-content h3{font-size:16px}
+.message-content ul,.message-content ol{padding-left:24px!important;margin-bottom:14px;list-style-position:outside}
+.message-content ul{list-style-type:disc!important}
+.message-content ol{list-style-type:decimal!important}
+.message-content li{margin-bottom:8px;line-height:1.7;display:list-item}
+.message-content code{background:var(--bg3);padding:2px 6px;border-radius:4px;font-family:var(--mono);font-size:13px}
+.message-content pre{background:var(--bg3);padding:14px;border-radius:8px;overflow-x:auto;margin-bottom:14px}
+.message-content pre code{background:none;padding:0}
+.message-content blockquote{border-left:3px solid var(--accent);padding:4px 0 4px 16px;color:var(--text2);margin:14px 0;font-style:italic}
+.message-content strong{font-weight:700}
+.message-content em{font-style:italic}
+.message-content hr{border:none;border-top:1px solid var(--border);margin:18px 0}
+.message-content table{width:100%;border-collapse:collapse;margin-bottom:14px}
+.message-content th,.message-content td{padding:8px 12px;border:1px solid var(--border);text-align:left}
+.message-content th{background:var(--bg3);font-weight:600}
 .message-meta,.msg-meta{font-size:11px;color:var(--text3);margin-top:6px;display:flex;align-items:center;gap:6px}
 /* Thinking blocks */
 .thinking-block{border:1px solid var(--border);border-radius:12px;margin-bottom:12px;overflow:hidden}
