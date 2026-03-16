@@ -3599,8 +3599,9 @@ function removeAttachment() {
 }
 function switchACPane(pane, btn) {
   document.querySelectorAll('.ac-pane').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.ac-tab').forEach(b => b.classList.remove('active'));
-  const paneEl = document.getElementById('ac-' + pane);
+  document.querySelectorAll('.agent-comp-tab').forEach(b => b.classList.remove('active'));
+  // Try pane-{name} first, then ac-{name} for backward compat
+  const paneEl = document.getElementById('pane-' + pane) || document.getElementById('ac-' + pane);
   if (paneEl) paneEl.classList.add('active');
   if (btn) btn.classList.add('active');
 }
@@ -3643,7 +3644,7 @@ function updateAgentBrowserScreenshot(screenshotB64, toolName, args) {
     STATE.agentComputerVisible = true;
   }
   // Auto-switch to browser tab in agent computer panel
-  const browserTab = document.querySelector('.ac-tab[data-pane="browser"]');
+  const browserTab = document.getElementById('tab-browser-btn');
   if (browserTab) switchACPane('browser', browserTab);
 }
 function toggleACFullscreen() {
@@ -3770,7 +3771,7 @@ function openAgentComputer() {
   // Check if there's a browser screenshot visible — auto-switch to browser tab
   const img = document.getElementById('acBrowserScreenshot');
   if (img && img.src && img.style.display !== 'none') {
-    const browserTab = document.querySelector('.agent-comp-tab[id="tab-browser-btn"]');
+    const browserTab = document.getElementById('tab-browser-btn');
     if (browserTab) switchACPane('browser', browserTab);
   }
 }

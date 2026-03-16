@@ -856,14 +856,17 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 }
 
 .scroll-bottom-btn {
-  position: absolute; bottom: 90px; right: 20px;
-  width: 32px; height: 32px; border-radius: var(--radius-full);
-  background: var(--bg2); border: 1px solid var(--border2);
-  color: var(--text2); box-shadow: var(--shadow-md);
+  position: absolute; bottom: 20px; right: 20px;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: #fff; border: 1px solid #e5e5e5;
+  color: #6b7280; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   display: flex; align-items: center; justify-content: center;
-  transition: all var(--t-fast); z-index: 10;
+  transition: all 0.2s ease; z-index: 10; cursor: pointer;
 }
-.scroll-bottom-btn:hover { background: var(--bg3); color: var(--text); transform: translateY(-1px); }
+.scroll-bottom-btn:hover { background: #f3f4f6; color: #111; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transform: translateY(-1px); }
+[data-theme="dark"] .scroll-bottom-btn { background: #2a2a3e; border-color: #3a3a4e; color: #9ca3af; }
+[data-theme="dark"] .scroll-bottom-btn:hover { background: #3a3a4e; color: #fff; }
+.scroll-bottom-btn.hidden { display: none; }
 
 /* ════════════════════════════════════════════════════════════
    INPUT AREA
