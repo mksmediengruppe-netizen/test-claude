@@ -41,6 +41,7 @@ MODEL_TIERS = {
     },
     "powerful": {
         "models": [
+            {"id": "anthropic/claude-sonnet-4.6", "name": "Claude Sonnet 4.6", "input_price": 3.00, "output_price": 15.00, "max_tokens": 128000},
             {"id": "anthropic/claude-sonnet-4", "name": "Claude Sonnet 4", "input_price": 3.00, "output_price": 15.00, "max_tokens": 64000},
         ],
         "max_complexity": 5,
@@ -52,7 +53,7 @@ MODEL_TIERS = {
 FALLBACK_CHAINS = {
     "fast": ["openai/gpt-4.1-nano", "deepseek/deepseek-v3.2", "qwen/qwen3-235b-a22b"],
     "standard": ["qwen/qwen3-235b-a22b", "minimax/minimax-m2.5", "deepseek/deepseek-v3.2"],
-    "powerful": ["anthropic/claude-sonnet-4", "qwen/qwen3-235b-a22b", "minimax/minimax-m2.5"],
+    "powerful": ["anthropic/claude-sonnet-4.6", "anthropic/claude-sonnet-4", "qwen/qwen3-235b-a22b", "minimax/minimax-m2.5"],
 }
 
 # Cost tracking store

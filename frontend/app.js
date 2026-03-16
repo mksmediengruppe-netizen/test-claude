@@ -69,6 +69,80 @@ const CONFIG = {
 };
 
 // ── Init ───────────────────────────────────────────────────────
+
+// ── Ctrl+V paste image support ──────────────────────────────────────────────
+function setupPasteImageHandler() {
+  const chatInput = document.getElementById('chatInput');
+  if (!chatInput) return;
+  chatInput.addEventListener('paste', function(e) {
+    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+    let hasImage = false;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.indexOf('image') !== -1) {
+        hasImage = true;
+        e.preventDefault();
+        const blob = item.getAsFile();
+        if (!blob) continue;
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+          const base64 = ev.target.result;
+          if (!window._pastedImages) window._pastedImages = [];
+          const imgId = 'paste_' + Date.now() + '_' + Math.random().toString(36).substr(2,5);
+          window._pastedImages.push({ id: imgId, base64, type: blob.type, name: 'pasted_image_' + Date.now() + '.png' });
+          showPastedImagePreview(imgId, base64);
+        };
+        reader.readAsDataURL(blob);
+      }
+    }
+  });
+}
+
+function showPastedImagePreview(imgId, base64) {
+  // Find or create paste preview area above the input
+  let previewArea = document.getElementById('pastePreviewArea');
+  if (!previewArea) {
+    // Try to find the input wrapper
+    const chatInput = document.getElementById('chatInput');
+    const inputWrapper = chatInput ? chatInput.closest('.chat-input-wrapper, .input-area, .input-container, .chat-footer') : null;
+    if (!inputWrapper) {
+      // Fallback: insert before chatInput
+      const ci = document.getElementById('chatInput');
+      if (!ci) return;
+      previewArea = document.createElement('div');
+      previewArea.id = 'pastePreviewArea';
+      ci.parentNode.insertBefore(previewArea, ci);
+    } else {
+      previewArea = document.createElement('div');
+      previewArea.id = 'pastePreviewArea';
+      inputWrapper.insertBefore(previewArea, inputWrapper.firstChild);
+    }
+    previewArea.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;padding:8px 16px 4px;';
+  }
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'position:relative;display:inline-block;';
+  wrapper.dataset.imgId = imgId;
+  const img = document.createElement('img');
+  img.src = base64;
+  img.style.cssText = 'height:64px;width:auto;max-width:120px;border-radius:8px;object-fit:cover;border:2px solid var(--accent-primary,#4CAF50);box-shadow:0 2px 8px rgba(0,0,0,0.15);';
+  const removeBtn = document.createElement('button');
+  removeBtn.innerHTML = '&times;';
+  removeBtn.title = 'Удалить';
+  removeBtn.style.cssText = 'position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#ff4444;color:white;border:none;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;font-weight:bold;box-shadow:0 1px 4px rgba(0,0,0,0.3);';
+  removeBtn.onclick = function(e) {
+    e.stopPropagation();
+    wrapper.remove();
+    if (window._pastedImages) {
+      window._pastedImages = window._pastedImages.filter(p => p.id !== imgId);
+    }
+    const area = document.getElementById('pastePreviewArea');
+    if (area && area.children.length === 0) area.remove();
+  };
+  wrapper.appendChild(img);
+  wrapper.appendChild(removeBtn);
+  previewArea.appendChild(wrapper);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   loadSettings();
   applyTheme(STATE.settings.theme);
@@ -77,6 +151,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDragDrop();
   setupKeyboardShortcuts();
   setupScrollDetection();
+  setupFileDownloadHandler();
+  setupPasteImageHandler();
   renderModelDropdown();
   // Welcome suggestion hover
   document.querySelectorAll('.welcome-suggestion').forEach(btn => {
@@ -533,6 +609,9 @@ function loadChat(chatId) {
   document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
   const activeItem = document.querySelector(`[data-chat-id="${chatId}"]`);
   if (activeItem) activeItem.classList.add('active');
+
+  // Re-setup paste image handler (chatInput may have been re-created)
+  setupPasteImageHandler();
 }
 
 function deleteChat(chatId, event) {
@@ -763,11 +842,13 @@ function getArtifactInfo(lang, code) {
 function convertRawMarkdownLinks(html) {
   // Convert raw markdown links [text](url) that weren't parsed by marked.js
   // Specifically handle /api/files/xxx/download links as download cards
+  const _baseUrl = (STATE.settings?.backendUrl || CONFIG.BACKEND_URL || window.location.origin).replace(/\/$/, '');
   html = html.replace(
     /\[([^\]]*?)\]\((\/api\/files\/[^)]+\/download)\)/g,
     function(match, text, url) {
       var cleanText = text.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{2B55}\u{FE00}-\u{FE0F}\u{200D}]/gu, '').trim();
-      return '<a href="' + url + '" class="file-download-card" download>' +
+      var absUrl = url.startsWith('http') ? url : _baseUrl + url;
+      return '<a href="' + absUrl + '" class="file-download-card" download>' +
         '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
         '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
         '<polyline points="7 10 12 15 17 10"/>' +
@@ -784,6 +865,9 @@ function convertRawMarkdownLinks(html) {
 
 function renderMarkdown(text) {
   if (typeof marked === 'undefined') return escapeHtml(text).replace(/\n/g, '<br>');
+  // Fix sandbox: protocol URLs that may be cached in localStorage
+  const _fixBaseUrl = (STATE.settings?.backendUrl || CONFIG.BACKEND_URL || window.location.origin).replace(/\/$/, '');
+  text = text.replace(/sandbox:(\/(api\/files\/[^)\s"']+))/g, _fixBaseUrl + '$1');
   try {
     marked.setOptions({
       breaks: true,
@@ -800,11 +884,13 @@ function renderMarkdown(text) {
     // Wrap pre blocks
     html = html.replace(/<pre><code/g, '<pre><code');
     // Convert /api/files/xxx/download links into styled download cards (HTML <a> tags)
+    const _mdBaseUrl = (STATE.settings?.backendUrl || CONFIG.BACKEND_URL || window.location.origin).replace(/\/$/, '');
     html = html.replace(
       /<a href="(\/api\/files\/[^"]+\/download)"[^>]*>([\s\S]*?)<\/a>/g,
       function(match, url, text) {
         var cleanText = text.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{2B55}\u{FE00}-\u{FE0F}\u{200D}]/gu, '').trim();
-        return '<a href="' + url + '" class="file-download-card" download>' +
+        var absUrl = url.startsWith('http') ? url : _mdBaseUrl + url;
+        return '<a href="' + absUrl + '" class="file-download-card" download>' +
           '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
           '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
           '<polyline points="7 10 12 15 17 10"/>' +
@@ -862,6 +948,7 @@ function createStreamingMessage() {
         <div class="thinking-steps" id="${thinkId}_steps"></div>
       </div>
       <div class="message-content" id="content_${msgId}"></div>
+      <div class="message-files" id="files_${msgId}"></div>
       <div class="message-meta" id="meta_${msgId}"></div>
     </div>
   `;
@@ -897,6 +984,95 @@ function updateStreamingMessage(msgId, text) {
     contentEl.innerHTML = renderMarkdown(text);
     scrollToBottom();
   }
+}
+function addFileCard(msgId, filename, url, size) {
+  const filesEl = document.getElementById('files_' + msgId);
+  if (!filesEl) return;
+  const sizeStr = size > 0 ? ' (' + (size > 1048576 ? (size/1048576).toFixed(1)+'MB' : size > 1024 ? (size/1024).toFixed(0)+'KB' : size+'B') + ')' : '';
+  const ext = filename.split('.').pop().toLowerCase();
+  const iconMap = {docx:'📄',doc:'📄',pdf:'📕',xlsx:'📊',xls:'📊',zip:'🗜️',tar:'🗜️',gz:'🗜️',png:'🖼️',jpg:'🖼️',jpeg:'🖼️',gif:'🖼️',mp4:'🎬',mp3:'🎵',csv:'📊',json:'📋',md:'📝',txt:'📝',html:'🌐',py:'🐍',js:'📜'};
+  const icon = iconMap[ext] || '📎';
+  const card = document.createElement('a');
+  card.href = url;
+  card.className = 'file-download-card';
+  card.setAttribute('download', filename);
+  card.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> ' + icon + ' ' + filename + sizeStr;
+  filesEl.appendChild(card);
+  scrollToBottom();
+}
+
+function addSaveOfferCard(msgId, title, fullText) {
+  const filesEl = document.getElementById('files_' + msgId);
+  if (!filesEl) return;
+  // Don't add duplicate
+  if (filesEl.querySelector('.save-offer-card')) return;
+
+  const card = document.createElement('div');
+  card.className = 'save-offer-card';
+  card.innerHTML = `
+    <div class="save-offer-label">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      Сохранить как документ
+    </div>
+    <div class="save-offer-buttons">
+      <button class="save-offer-btn" data-fmt="md" title="Markdown">📝 .md</button>
+      <button class="save-offer-btn" data-fmt="docx" title="Word документ">📄 .docx</button>
+      <button class="save-offer-btn" data-fmt="pdf" title="PDF документ">📕 .pdf</button>
+    </div>
+  `;
+
+  // Store fullText on the card element
+  card._fullText = fullText;
+  card._title = title;
+
+  card.querySelectorAll('.save-offer-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const fmt = btn.dataset.fmt;
+      const btnText = btn.innerHTML;
+      btn.innerHTML = '⏳';
+      btn.disabled = true;
+      try {
+        const backendUrl = STATE.settings?.backendUrl || CONFIG.BACKEND_URL;
+        const resp = await fetch(backendUrl + '/api/save-as-document', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + (STATE.currentUser?.token || localStorage.getItem('sa_token') || '')
+          },
+          body: JSON.stringify({
+            content: card._fullText,
+            filename: card._title,
+            format: fmt
+          })
+        });
+        const data = await resp.json();
+        if (data.url) {
+          // Replace buttons with download link
+          const dl = document.createElement('a');
+          dl.href = backendUrl + data.url;
+          dl.className = 'file-download-card';
+          dl.setAttribute('download', data.filename || card._title + '.' + fmt);
+          const iconMap = {md:'📝', docx:'📄', pdf:'📕'};
+          const sizeStr = data.size > 0 ? ' (' + (data.size > 1024 ? (data.size/1024).toFixed(0)+'KB' : data.size+'B') + ')' : '';
+          dl.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> ' + (iconMap[fmt]||'📎') + ' ' + (data.filename || card._title + '.' + fmt) + sizeStr;
+          card.replaceWith(dl);
+          scrollToBottom();
+        } else {
+          btn.innerHTML = btnText;
+          btn.disabled = false;
+          alert('Ошибка: ' + (data.error || 'Не удалось сохранить'));
+        }
+      } catch(err) {
+        btn.innerHTML = btnText;
+        btn.disabled = false;
+        alert('Ошибка сохранения: ' + err.message);
+      }
+    });
+  });
+
+  filesEl.appendChild(card);
+  scrollToBottom();
 }
 
 function finalizeStreamingMessage(msgId, fullText, cost, tokens) {
@@ -984,8 +1160,9 @@ async function sendMessage() {
   saveChats();
 
   // Force scroll to bottom so user sees their message
-  scrollToBottom();
-  setTimeout(scrollToBottom, 50);
+  _userScrolledUp = false; // user sent message — reset scroll flag
+  scrollToBottom(true); // force instant scroll
+  setTimeout(function() { scrollToBottom(true); }, 100);
 
   // Update chat title if first message
   if (chat.messages.length === 1) {
@@ -1003,8 +1180,28 @@ async function sendMessage() {
   showGenerationUI(true);
    addAuditEntry('chat', `Запрос: ${text.substring(0, 60)}...`);
   // Upload pending files to backend
+  // Also include pasted images (Ctrl+V) as files
   const filesToUpload = _pendingFiles.filter(f => f !== null);
   _pendingFiles = [];
+  // Convert pasted images from base64 to File objects and add to upload queue
+  if (window._pastedImages && window._pastedImages.length > 0) {
+    for (const pi of window._pastedImages) {
+      try {
+        const arr = pi.base64.split(',');
+        const mime = arr[0].match(/:(.*?);/)[1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) u8arr[n] = bstr.charCodeAt(n);
+        const file = new File([u8arr], pi.name || 'pasted_image.png', { type: mime });
+        filesToUpload.push(file);
+      } catch(e) { console.error('Paste image convert error:', e); }
+    }
+    window._pastedImages = [];
+    // Remove paste preview area
+    const area = document.getElementById('pastePreviewArea');
+    if (area) area.remove();
+  }
   const attachedFilesEl = document.getElementById('attachedFile');
   if (attachedFilesEl) { attachedFilesEl.innerHTML = ''; attachedFilesEl.classList.add('hidden'); }
   if (filesToUpload.length > 0) {
@@ -1061,6 +1258,7 @@ async function callAPI(userMessage, chat) {
   const streamMsgId = createStreamingMessage();
   let fullText = '';
   let inputTokens = 0;
+  let _saveOfferTitle = null;
   let outputTokens = 0;
   let backendCost = null;  // Will be set from backend 'done' event
 
@@ -1228,8 +1426,7 @@ async function callAPI(userMessage, chat) {
               addTaskStep('📄', `Файл: ${parsed.filename || ''}`);
               addThinkingStep(streamMsgId, '📄', `Файл: ${parsed.filename || ''}`);
               if (parsed.url) {
-                fullText += `\n\n[📎 ${parsed.filename}](${backendUrl}${parsed.url})`;
-                updateStreamingMessage(streamMsgId, fullText);
+                addFileCard(streamMsgId, parsed.filename || 'file', backendUrl + parsed.url, parsed.size || 0);
               }
             } else if (type === 'self_check') {
               if (parsed.status === 'started') {
@@ -1256,6 +1453,9 @@ async function callAPI(userMessage, chat) {
               addTaskStep('❌', errMsg);
               addThinkingStep(streamMsgId, '❌', errMsg);
               addTerminalLine(errMsg, 'error');
+            } else if (type === 'save_offer') {
+              _saveOfferTitle = parsed.title || 'document';
+              addThinkingStep(streamMsgId, '💾', 'Готов сохранить как документ');
             } else if (type === 'done') {
               inputTokens = parsed.tokens_in || 0;
               outputTokens = parsed.tokens_out || 0;
@@ -1330,6 +1530,10 @@ async function callAPI(userMessage, chat) {
 
   // Finalize message
   finalizeStreamingMessage(streamMsgId, fullText, cost, totalTokens);
+  // Show "Save as document" offer if response was long (Manus-style)
+  if (_saveOfferTitle && fullText && fullText.length > 500) {
+    addSaveOfferCard(streamMsgId, _saveOfferTitle, fullText);
+  }
 
   // Save to chat history
   chat.messages.push({ role: 'assistant', content: fullText, cost, tokens: totalTokens });
@@ -2004,21 +2208,68 @@ function startVoiceInput() {
 }
 
 // ── Scroll ─────────────────────────────────────────────────────
-function scrollToBottom() {
+// Auto-scroll: track if user manually scrolled up
+let _userScrolledUp = false;
+
+function scrollToBottom(force) {
   const messages = document.getElementById('messages');
   if (!messages) return;
-  // Use requestAnimationFrame for reliable scroll after DOM update
-  requestAnimationFrame(() => {
+  // If user scrolled up and this is not a forced scroll — don't interrupt
+  if (_userScrolledUp && !force) return;
+  requestAnimationFrame(function() {
+    messages.scrollTop = messages.scrollHeight; // instant scroll, no animation lag
+    const btn = document.getElementById('scrollBottomBtn');
+    if (btn) btn.classList.add('hidden');
+  });
+}
+
+function scrollToBottomSmooth() {
+  const messages = document.getElementById('messages');
+  if (!messages) return;
+  requestAnimationFrame(function() {
     messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
-    document.getElementById('scrollBottomBtn')?.classList.add('hidden');
+    const btn = document.getElementById('scrollBottomBtn');
+    if (btn) btn.classList.add('hidden');
   });
 }
 
 function setupScrollDetection() {
   const messages = document.getElementById('messages');
-  messages.addEventListener('scroll', () => {
-    const isAtBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 100;
+  messages.addEventListener('scroll', function() {
+    const isAtBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 150;
     document.getElementById('scrollBottomBtn').classList.toggle('hidden', isAtBottom);
+    // Track manual scroll: if user scrolled up, pause auto-scroll
+    _userScrolledUp = !isAtBottom;
+  });
+}
+
+function setupFileDownloadHandler() {
+  // Intercept clicks on file-download-card links to add Authorization header
+  document.addEventListener('click', async function(e) {
+    const link = e.target.closest('a.file-download-card');
+    if (!link) return;
+    e.preventDefault();
+    const url = link.href;
+    if (!url || !url.includes('/api/files/')) return;
+    const token = STATE.currentUser?.token || localStorage.getItem('sa_token');
+    try {
+      const resp = await fetch(url, { headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+      if (!resp.ok) { showToast('Ошибка скачивания файла: ' + resp.status, 'error'); return; }
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      // Get filename from Content-Disposition or link text
+      const disp = resp.headers.get('content-disposition') || '';
+      const fnMatch = disp.match(/filename="?([^"]+)"?/);
+      a.download = fnMatch ? fnMatch[1] : (link.textContent.trim() || 'file');
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+    } catch(err) {
+      showToast('Ошибка скачивания: ' + err.message, 'error');
+    }
   });
 }
 // ── Auth Actions ───────────────────────────────────────────────────
@@ -3524,7 +3775,7 @@ function openAgentComputer() {
 
 // Dev Mode state
 STATE.devMode = false;
-STATE.devModel = 'claude-sonnet';
+STATE.devModel = 'claude-sonnet-46';
 STATE.devModels = {};
 
 // Initialize Dev Mode UI (called from initApp)
@@ -3537,7 +3788,7 @@ function initDevMode() {
     wrap.style.display = 'flex';
     // Load saved dev mode state
     const savedDevMode = localStorage.getItem('sa_dev_mode') === 'true';
-    const savedDevModel = localStorage.getItem('sa_dev_model') || 'claude-sonnet';
+    const savedDevModel = localStorage.getItem('sa_dev_model') || 'claude-sonnet-46';
     STATE.devMode = savedDevMode;
     STATE.devModel = savedDevModel;
     

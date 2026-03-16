@@ -127,6 +127,7 @@ MODEL_CONFIGS = {
 }
 
 CHAT_MODELS = {
+    "sonnet46": {"model": "anthropic/claude-sonnet-4.6", "name": "Claude Sonnet 4.6", "lang": "RU ⭐⭐⭐⭐⭐", "input_price": 3.00, "output_price": 15.00},
     "qwen3": {"model": "qwen/qwen3-235b-a22b", "name": "Qwen3 235B", "lang": "RU ⭐⭐⭐⭐⭐", "input_price": 0.10, "output_price": 0.60},
     "deepseek": {"model": "deepseek/deepseek-v3.2", "name": "DeepSeek V3.2", "lang": "RU ⭐⭐⭐⭐⭐", "input_price": 0.26, "output_price": 0.38},
     "gpt5nano": {"model": "openai/gpt-4.1-nano", "name": "GPT-5 Nano", "lang": "RU ⭐⭐⭐⭐", "input_price": 0.05, "output_price": 0.40},
@@ -134,6 +135,14 @@ CHAT_MODELS = {
 
 # ── Dev Mode Models (Admin Only) ─────────────────────────────
 DEV_MODELS = {
+    "claude-sonnet-46": {
+        "model": "anthropic/claude-sonnet-4.6",
+        "name": "Claude Sonnet 4.6",
+        "description": "Новейший Sonnet. Лучший для кода, агентов и сложных задач.",
+        "input_price": 3.00,
+        "output_price": 15.00,
+        "power": 5
+    },
     "claude-opus": {
         "model": "anthropic/claude-opus-4",
         "name": "Claude Opus 4",
@@ -145,7 +154,7 @@ DEV_MODELS = {
     "claude-sonnet": {
         "model": "anthropic/claude-sonnet-4",
         "name": "Claude Sonnet 4.5",
-        "description": "Лучший баланс мощи и скорости для кода.",
+        "description": "Предыдущий Sonnet. Хороший баланс мощи и скорости.",
         "input_price": 3.00,
         "output_price": 15.00,
         "power": 4
@@ -247,7 +256,7 @@ _DEFAULT_DB = {
             "total_spent": 0.0,
             "settings": {
                 "variant": "premium",
-                "chat_model": "qwen3",
+                "chat_model": "sonnet46",
                 "enhanced_mode": False,
                 "self_check_level": "none",
                 "design_pro": False,
@@ -1239,7 +1248,7 @@ def send_message(chat_id):
     variant = user_settings.get("variant", "premium")
     enhanced = user_settings.get("enhanced_mode", False)
     self_check_level = user_settings.get("self_check_level", "none")  # none | light | medium | deep
-    chat_model = user_settings.get("chat_model", "qwen3")
+    chat_model = user_settings.get("chat_model", "sonnet46")
 
     # Get SSH credentials from user settings
     ssh_credentials = {
@@ -1319,8 +1328,8 @@ def send_message(chat_id):
     dev_model_config = None
     if user_settings.get("dev_mode") and request.user.get("role") == "admin":
         is_dev_mode = True
-        dev_model_key = user_settings.get("dev_model", "claude-sonnet")
-        dev_model_config = DEV_MODELS.get(dev_model_key, DEV_MODELS["claude-sonnet"])
+        dev_model_key = user_settings.get("dev_model", "claude-sonnet-46")
+        dev_model_config = DEV_MODELS.get(dev_model_key, DEV_MODELS["claude-sonnet-46"])
         model = dev_model_config["model"]
         model_name = dev_model_config["name"]
         agent_model = dev_model_config["model"]  # Same model for everything in dev mode
@@ -1564,7 +1573,7 @@ def send_message(chat_id):
                 if routed_complexity <= 2:
                     active_model = routed_model_id  # Simple → fast/cheap model
                 else:
-                    active_model = CHAT_MODELS.get(chat_model, CHAT_MODELS["qwen3"])["model"]
+                    active_model = CHAT_MODELS.get(chat_model, CHAT_MODELS["sonnet46"])["model"]
                 system_prompt = """Ты — полезный AI-ассистент Super Agent v6.0. Отвечай на русском языке.
 Ты умеешь:
 - Писать код и создавать приложения
@@ -1846,6 +1855,18 @@ def send_message(chat_id):
 
         db_write(db2)
 
+        # Offer to save as document if response is long enough (Manus-style)
+        if full_response and len(full_response) > 500:
+            import re as _re
+            title_match = _re.search(r'^#+\s+(.+)$', full_response, _re.MULTILINE)
+            if title_match:
+                raw_title = title_match.group(1).strip()
+            else:
+                words = full_response.split()[:6]
+                raw_title = " ".join(words)
+            safe_title = _re.sub(r'[^\w\s\-]', '', raw_title)[:50].strip()
+            safe_title = _re.sub(r'\s+', '_', safe_title) or "document"
+            yield f"data: {json.dumps({'type': 'save_offer', 'title': safe_title, 'length': len(full_response)})}\n\n"
         # Send completion event with routing info
         yield f"data: {json.dumps({'type': 'done', 'tokens_in': tokens_in, 'tokens_out': tokens_out, 'cost': total_cost, 'model': routed_model_name, 'tier': routed_tier, 'complexity': routed_complexity})}\n\n"
 
@@ -2077,7 +2098,7 @@ def admin_create_user():
         },
         "settings": {
             "variant": "premium",
-            "chat_model": "qwen3",
+            "chat_model": "sonnet46",
             "enhanced_mode": False,
             "design_pro": False,
             "language": "ru"
@@ -2501,6 +2522,40 @@ def list_files_endpoint():
     limit = int(request.args.get("limit", 50))
     files = list_generated_files(chat_id=chat_id, user_id=request.user_id, limit=limit)
     return jsonify({"files": files, "total": len(files)})
+
+
+@app.route("/api/save-as-document", methods=["POST"])
+@require_auth
+def save_as_document():
+    """Save agent response text as a document file (.md, .docx, .pdf)."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    content = data.get("content", "")
+    filename_base = data.get("filename", "document")
+    fmt = data.get("format", "md").lower().strip(".")
+
+    if not content:
+        return jsonify({"error": "content is required"}), 400
+
+    if fmt not in ("md", "docx", "pdf"):
+        return jsonify({"error": f"Unsupported format: {fmt}"}), 400
+
+    # Clean filename
+    import re as _re
+    safe_base = _re.sub(r"[^\w\-]", "_", filename_base)[:60] or "document"
+    filename = f"{safe_base}.{fmt}"
+
+    # Use existing generate_file function
+    result = generate_file(
+        content=content,
+        filename=filename,
+        title=filename_base.replace("_", " "),
+        chat_id=data.get("chat_id"),
+        user_id=request.user_id
+    )
+    return jsonify(result)
 
 
 @app.route("/api/files/generate", methods=["POST"])
