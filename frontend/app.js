@@ -4060,3 +4060,44 @@ function dismissHumanHandoff(msgId, skip) {
     // The user can also just type a follow-up message
   }
 }
+
+
+// ═══ BROWSER TAKEOVER ═══
+window.requestBrowserTakeover = function requestBrowserTakeover() {
+  // Switch to browser pane
+  if (typeof switchACPane === 'function') {
+    var browserTab = document.getElementById('tab-browser-btn');
+    if (browserTab) switchACPane('browser', browserTab);
+  }
+  // Remove existing modal
+  var existing = document.getElementById('takeoverModal');
+  if (existing) existing.remove();
+  // Create modal
+  var modal = document.createElement('div');
+  modal.id = 'takeoverModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  var inner = document.createElement('div');
+  inner.style.cssText = 'background:var(--bg2,#1e1e2e);border:1px solid var(--border,#333);border-radius:16px;padding:28px;max-width:480px;width:90%;';
+  inner.innerHTML = '<h3 style="margin:0 0 12px;font-size:17px;">Передача управления</h3>'
+    + '<p style="color:var(--text2,#aaa);font-size:14px;line-height:1.6;margin:0 0 16px;">Агент столкнулся с CAPTCHA или требованием авторизации. Что делать:</p>'
+    + '<div style="background:var(--bg3,#2a2a3e);border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;line-height:1.8;">'
+    + '<b>Вариант 1: Логин/пароль</b><br>'
+    + 'Отправьте в чат: <code style="background:var(--bg4,#333);padding:2px 6px;border-radius:4px;">логин: xxx пароль: yyy</code><br>'
+    + 'Агент введёт их сам и продолжит задачу.<br><br>'
+    + '<b>Вариант 2: CAPTCHA</b><br>'
+    + 'Напишите агенту <code style="background:var(--bg4,#333);padding:2px 6px;border-radius:4px;">продолжай</code> после решения CAPTCHA вручную.'
+    + '</div>'
+    + '<div style="display:flex;gap:10px;justify-content:flex-end;">'
+    + '<button id="tmClose" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg3,#2a2a3e);color:var(--text,#fff);cursor:pointer;font-size:13px;">Закрыть</button>'
+    + '<button id="tmReply" style="padding:8px 18px;border-radius:8px;border:none;background:var(--accent,#7c3aed);color:#fff;cursor:pointer;font-size:13px;">Отправить ответ</button>'
+    + '</div>';
+  modal.appendChild(inner);
+  document.body.appendChild(modal);
+  document.getElementById('tmClose').onclick = function() { modal.remove(); };
+  document.getElementById('tmReply').onclick = function() {
+    modal.remove();
+    var inp = document.getElementById('msgInput') || document.getElementById('chatInput') || document.querySelector('textarea[placeholder]');
+    if (inp) inp.focus();
+  };
+  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+};

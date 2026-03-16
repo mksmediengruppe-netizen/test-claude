@@ -2121,23 +2121,28 @@ function requestBrowserTakeover() {
   var modal = document.createElement("div");
   modal.id = "takeoverModal";
   modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;";
-  modal.innerHTML = '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:28px;max-width:480px;width:90%;">'
-    + '<h3 style="margin:0 0 12px;font-size:17px;">Передача управления</h3>'
-    + '<p style="color:var(--text2);font-size:14px;line-height:1.6;margin:0 0 16px;">Агент столкнулся с CAPTCHA или требованием авторизации. Что делать:</p>'
-    + '<div style="background:var(--bg3);border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;line-height:1.8;">'
-    + '<b>Вариант 1: Логин/пароль</b><br>'
-    + 'Отправьте в чат: <code style="background:var(--bg4);padding:2px 6px;border-radius:4px;">логин: xxx пароль: yyy</code><br>'
-    + 'Агент введёт их сам и продолжит задачу.<br><br>'
-    + '<b>Вариант 2: CAPTCHA</b><br>'
-    + 'Напишите агенту <code style="background:var(--bg4);padding:2px 6px;border-radius:4px;">продолжай</code> после того как CAPTCHA будет решена вручную.'
-    + '</div>'
-    + '<div style="display:flex;gap:10px;justify-content:flex-end;">'
-    + '<button onclick="document.getElementById(\'takeoverModal\').remove()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;font-size:13px;">Закрыть</button>'
-    + '<button onclick="document.getElementById(\'takeoverModal\').remove();var inp=document.getElementById(\'msgInput\');if(inp)inp.focus();" style="padding:8px 18px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:13px;">Отправить ответ</button>'
-    + '</div></div>';
+  var inner = document.createElement("div");
+  inner.style.cssText = "background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:28px;max-width:480px;width:90%;";
+  inner.innerHTML = "<h3 style=\"margin:0 0 12px;font-size:17px;\">Передача управления</h3>"
+    + "<p style=\"color:var(--text2);font-size:14px;line-height:1.6;margin:0 0 16px;\">Агент столкнулся с CAPTCHA или требованием авторизации. Что делать:</p>"
+    + "<div style=\"background:var(--bg3);border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;line-height:1.8;\">"
+    + "<b>Вариант 1: Логин/пароль</b><br>"
+    + "Отправьте в чат: <code style=\"background:var(--bg4);padding:2px 6px;border-radius:4px;\">логин: xxx пароль: yyy</code><br>"
+    + "Агент введёт их сам и продолжит задачу.<br><br>"
+    + "<b>Вариант 2: CAPTCHA</b><br>"
+    + "Напишите агенту <code style=\"background:var(--bg4);padding:2px 6px;border-radius:4px;\">продолжай</code> после того как CAPTCHA будет решена вручную."
+    + "</div>"
+    + "<div style=\"display:flex;gap:10px;justify-content:flex-end;\">"
+    + "<button id=\"tmClose\" style=\"padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;font-size:13px;\">Закрыть</button>"
+    + "<button id=\"tmReply\" style=\"padding:8px 18px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:13px;\">Отправить ответ</button>"
+    + "</div>";
+  modal.appendChild(inner);
   document.body.appendChild(modal);
+  document.getElementById("tmClose").onclick = function(){ modal.remove(); };
+  document.getElementById("tmReply").onclick = function(){ modal.remove(); var inp = document.getElementById("msgInput") || document.getElementById("chatInput"); if(inp) inp.focus(); };
   modal.addEventListener("click", function(e){ if(e.target===modal) modal.remove(); });
 }
+
 
 // switchACPane - app.js uses getElementById('ac-' + pane) and .ac-pane/.ac-tab classes
 // Our bridge maps pane-X to ac-X and vice versa

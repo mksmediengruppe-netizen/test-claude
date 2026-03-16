@@ -696,6 +696,9 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 .msg-model { font-size: 11px; color: var(--accent); background: rgba(129,140,248,0.1); padding: 1px 6px; border-radius: var(--radius-full); }
 .msg-cost { font-size: 11px; color: var(--accent-green); font-weight: 500; }
 
+/* ── Message body overflow fix for list markers ── */
+.message-body { overflow: visible !important; }
+
 /* ── Manus-style Typography for AI responses ── */
 .message-content, .msg-content {
   font-size: 16px; line-height: 1.8; color: var(--text);
@@ -715,10 +718,11 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 .message-content h2:first-child, .msg-content h2:first-child,
 .message-content h3:first-child, .msg-content h3:first-child { margin-top: 4px; }
 .message-content ul, .message-content ol,
-.msg-content ul, .msg-content ol { padding-left: 24px; margin-bottom: 16px; }
-.message-content ol, .msg-content ol { list-style-type: decimal; }
+.msg-content ul, .msg-content ol { padding-left: 24px !important; margin-bottom: 16px; }
+.message-content ul, .msg-content ul { list-style-type: disc !important; }
+.message-content ol, .msg-content ol { list-style-type: decimal !important; }
 .message-content li, .msg-content li {
-  margin-bottom: 10px; padding-left: 4px; line-height: 1.7;
+  margin-bottom: 10px; padding-left: 4px; line-height: 1.7; display: list-item;
 }
 .message-content li > p, .msg-content li > p { margin-bottom: 8px; }
 .message-content blockquote, .msg-content blockquote {
