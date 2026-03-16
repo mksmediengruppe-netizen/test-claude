@@ -836,6 +836,10 @@ a{color:var(--accent)}
 .browser-dots span{width:8px;height:8px;border-radius:50%;background:var(--border)}
 .browser-url{flex:1;font-size:12px;color:var(--text2);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .browser-status{font-size:11px;color:var(--text3)}
+.browser-takeover-btn{font-size:11px;padding:4px 10px;background:var(--accent);color:#fff;border-radius:var(--r-sm);cursor:pointer;border:none;font-family:var(--font);white-space:nowrap;flex-shrink:0;transition:background var(--tr)}
+.browser-takeover-btn:hover{background:var(--accent-h)}
+.browser-takeover-btn.active{background:#e55;animation:pulse-red 1s infinite}
+@keyframes pulse-red{0%,100%{background:#e55}50%{background:#c33}}
 .browser-viewport{flex:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:#fff;min-height:300px}
 [data-theme="dark"] .browser-viewport{background:#1a1f2e}
 .browser-empty{
@@ -1611,6 +1615,7 @@ a{color:var(--accent)}
                 <div class="browser-dots"><span></span><span></span><span></span></div>
                 <div class="browser-url" id="acBrowserUrl">about:blank</div>
                 <div class="browser-status" id="acBrowserStatus"></div>
+                <button class="browser-takeover-btn" id="browserTakeoverBtn" onclick="requestBrowserTakeover()" title="Взять управление браузером агента">Взять управление</button>
               </div>
               <div class="browser-viewport" id="acBrowserViewport">
                 <div class="browser-empty" id="acBrowserPlaceholder">
@@ -2108,6 +2113,32 @@ function toggleACFullscreen() {
   const rp = document.getElementById('agentComputer');
   rp.classList.toggle('ac-fullscreen');
 }
+function requestBrowserTakeover() {
+  var browserTab = document.getElementById("tab-browser-btn");
+  if (browserTab) switchACPane("browser", browserTab);
+  var existing = document.getElementById("takeoverModal");
+  if (existing) existing.remove();
+  var modal = document.createElement("div");
+  modal.id = "takeoverModal";
+  modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;";
+  modal.innerHTML = '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:28px;max-width:480px;width:90%;">'
+    + '<h3 style="margin:0 0 12px;font-size:17px;">Передача управления</h3>'
+    + '<p style="color:var(--text2);font-size:14px;line-height:1.6;margin:0 0 16px;">Агент столкнулся с CAPTCHA или требованием авторизации. Что делать:</p>'
+    + '<div style="background:var(--bg3);border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;line-height:1.8;">'
+    + '<b>Вариант 1: Логин/пароль</b><br>'
+    + 'Отправьте в чат: <code style="background:var(--bg4);padding:2px 6px;border-radius:4px;">логин: xxx пароль: yyy</code><br>'
+    + 'Агент введёт их сам и продолжит задачу.<br><br>'
+    + '<b>Вариант 2: CAPTCHA</b><br>'
+    + 'Напишите агенту <code style="background:var(--bg4);padding:2px 6px;border-radius:4px;">продолжай</code> после того как CAPTCHA будет решена вручную.'
+    + '</div>'
+    + '<div style="display:flex;gap:10px;justify-content:flex-end;">'
+    + '<button onclick="document.getElementById(\'takeoverModal\').remove()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;font-size:13px;">Закрыть</button>'
+    + '<button onclick="document.getElementById(\'takeoverModal\').remove();var inp=document.getElementById(\'msgInput\');if(inp)inp.focus();" style="padding:8px 18px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:13px;">Отправить ответ</button>'
+    + '</div></div>';
+  document.body.appendChild(modal);
+  modal.addEventListener("click", function(e){ if(e.target===modal) modal.remove(); });
+}
+
 // switchACPane - app.js uses getElementById('ac-' + pane) and .ac-pane/.ac-tab classes
 // Our bridge maps pane-X to ac-X and vice versa
 function switchACPane(name, el) {
