@@ -1047,10 +1047,10 @@ function addSaveOfferCard(msgId, title, fullText) {
           })
         });
         const data = await resp.json();
-        if (data.url) {
+        if (data.download_url || data.url) {
           // Replace buttons with download link
           const dl = document.createElement('a');
-          dl.href = backendUrl + data.url;
+          dl.href = backendUrl + (data.download_url || data.url);
           dl.className = 'file-download-card';
           dl.setAttribute('download', data.filename || card._title + '.' + fmt);
           const iconMap = {md:'📝', docx:'📄', pdf:'📕'};
@@ -3763,9 +3763,15 @@ function addAgentThumbnailToChat(screenshotB64, toolName, description) {
 
 function openAgentComputer() {
   const panel = document.getElementById('agentComputer');
-  if (panel && panel.classList.contains('hidden')) {
+  if (panel) {
     panel.classList.remove('hidden');
     STATE.agentComputerVisible = true;
+  }
+  // Check if there's a browser screenshot visible — auto-switch to browser tab
+  const img = document.getElementById('acBrowserScreenshot');
+  if (img && img.src && img.style.display !== 'none') {
+    const browserTab = document.querySelector('.agent-comp-tab[id="tab-browser-btn"]');
+    if (browserTab) switchACPane('browser', browserTab);
   }
 }
 

@@ -696,47 +696,59 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 .msg-model { font-size: 11px; color: var(--accent); background: rgba(129,140,248,0.1); padding: 1px 6px; border-radius: var(--radius-full); }
 .msg-cost { font-size: 11px; color: var(--accent-green); font-weight: 500; }
 
+/* ── Manus-style Typography for AI responses ── */
 .message-content, .msg-content {
-  font-size: 14px; line-height: 1.7; color: var(--text);
+  font-size: 16px; line-height: 1.8; color: var(--text);
   word-break: break-word;
+  letter-spacing: -0.01em;
 }
-.message-content p, .msg-content p { margin-bottom: 10px; }
+.message-content p, .msg-content p { margin-bottom: 16px; }
 .message-content p:last-child, .msg-content p:last-child { margin-bottom: 0; }
 .message-content h1, .message-content h2, .message-content h3,
-.msg-content h1, .msg-content h2, .msg-content h3 { margin: 14px 0 8px; font-weight: 600; }
-.message-content h1, .msg-content h1 { font-size: 18px; }
-.message-content h2, .msg-content h2 { font-size: 16px; }
-.message-content h3, .msg-content h3 { font-size: 14px; }
-.message-content ul, .message-content ol,
-.msg-content ul, .msg-content ol { padding-left: 20px; margin-bottom: 10px; }
-.message-content li, .msg-content li { margin-bottom: 4px; }
-.message-content blockquote, .msg-content blockquote {
-  border-left: 3px solid var(--accent); padding-left: 14px;
-  color: var(--text2); margin: 10px 0; font-style: italic;
+.msg-content h1, .msg-content h2, .msg-content h3 {
+  margin: 28px 0 12px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.3;
 }
-.message-content a, .msg-content a { color: var(--accent); }
-.message-content strong, .msg-content strong { font-weight: 600; color: var(--text); }
+.message-content h1, .msg-content h1 { font-size: 24px; }
+.message-content h2, .msg-content h2 { font-size: 20px; }
+.message-content h3, .msg-content h3 { font-size: 17px; }
+.message-content h1:first-child, .msg-content h1:first-child,
+.message-content h2:first-child, .msg-content h2:first-child,
+.message-content h3:first-child, .msg-content h3:first-child { margin-top: 4px; }
+.message-content ul, .message-content ol,
+.msg-content ul, .msg-content ol { padding-left: 24px; margin-bottom: 16px; }
+.message-content ol, .msg-content ol { list-style-type: decimal; }
+.message-content li, .msg-content li {
+  margin-bottom: 10px; padding-left: 4px; line-height: 1.7;
+}
+.message-content li > p, .msg-content li > p { margin-bottom: 8px; }
+.message-content blockquote, .msg-content blockquote {
+  border-left: 3px solid var(--accent); padding: 4px 0 4px 18px;
+  color: var(--text2); margin: 18px 0; font-style: italic; font-size: 15px;
+}
+.message-content a, .msg-content a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.message-content a:hover, .msg-content a:hover { color: var(--accent-h); }
+.message-content strong, .msg-content strong { font-weight: 700; color: var(--text); }
 .message-content em, .msg-content em { color: var(--text2); }
-.message-content hr, .msg-content hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
-.message-content table, .msg-content table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+.message-content hr, .msg-content hr { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+.message-content table, .msg-content table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 14px; }
 .message-content th, .message-content td,
-.msg-content th, .msg-content td { padding: 7px 12px; border: 1px solid var(--border); text-align: left; }
-.message-content th, .msg-content th { background: var(--bg3); font-weight: 600; }
+.msg-content th, .msg-content td { padding: 10px 14px; border: 1px solid var(--border); text-align: left; line-height: 1.5; }
+.message-content th, .msg-content th { background: var(--bg3); font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 0.03em; }
 
 /* Code blocks */
 .message-content pre, .msg-content pre {
   background: var(--code-bg); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: 14px 16px;
-  overflow-x: auto; margin: 10px 0; position: relative;
+  border-radius: var(--radius-md); padding: 16px 18px;
+  overflow-x: auto; margin: 18px 0; position: relative;
 }
 .message-content code, .msg-content code {
   font-family: var(--mono);
-  font-size: 13px; line-height: 1.6;
+  font-size: 13.5px; line-height: 1.65;
 }
 .message-content :not(pre) > code, .msg-content :not(pre) > code {
   background: var(--code-bg); border: 1px solid var(--border);
-  border-radius: var(--radius-xs); padding: 2px 6px;
-  font-size: 12px; color: var(--accent-pink);
+  border-radius: var(--radius-xs); padding: 2px 7px;
+  font-size: 13px; color: var(--accent-pink);
 }
 .code-copy-btn {
   position: absolute; top: 8px; right: 8px;

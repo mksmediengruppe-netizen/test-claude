@@ -26,7 +26,9 @@ from datetime import datetime, timezone
 logger = logging.getLogger("file_generator")
 
 # Directory for generated files
-GENERATED_DIR = os.environ.get("GENERATED_DIR", "/var/www/super-agent/backend/generated")
+# Auto-detect project dir for generated files
+_PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+GENERATED_DIR = os.environ.get("GENERATED_DIR", os.path.join(_PROJECT_DIR, "generated"))
 os.makedirs(GENERATED_DIR, exist_ok=True)
 
 # Registry of generated files (in-memory, persisted to JSON)

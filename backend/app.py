@@ -3377,5 +3377,57 @@ def gdpr_anonymize_data():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# ══════════════════════════════════════════════════════════════════
+# ██ BACKUP / EXPORT ALL DATA ██
+# ══════════════════════════════════════════════════════════════════
+@app.route("/api/admin/backup", methods=["GET"])
+@require_auth
+def admin_backup():
+    """Full backup: all chats, messages, generated files as ZIP."""
+    if request.user.get("role") != "admin":
+        return jsonify({"error": "Admin only"}), 403
+    import zipfile as _zf
+    from io import BytesIO
+    buf = BytesIO()
+    db = db_read()
+    with _zf.ZipFile(buf, 'w', _zf.ZIP_DEFLATED) as zf:
+        # Save full database as JSON
+        zf.writestr("database.json", json.dumps(db, indent=2, ensure_ascii=False, default=str))
+        # Save all generated files
+        gen_dir = GENERATED_DIR
+        if os.path.isdir(gen_dir):
+            for fname in os.listdir(gen_dir):
+                fpath = os.path.join(gen_dir, fname)
+                if os.path.isfile(fpath) and not fname.startswith('_'):
+                    zf.write(fpath, f"generated/{fname}")
+        # Save uploads
+        up_dir = UPLOAD_DIR
+        if os.path.isdir(up_dir):
+            for root, dirs, files in os.walk(up_dir):
+                for fname in files:
+                    fpath = os.path.join(root, fname)
+                    arcname = os.path.relpath(fpath, up_dir)
+                    zf.write(fpath, f"uploads/{arcname}")
+    buf.seek(0)
+    from datetime import datetime as _dt
+    ts = _dt.now().strftime('%Y%m%d_%H%M%S')
+    return Response(
+        buf.getvalue(),
+        mimetype='application/zip',
+        headers={'Content-Disposition': f'attachment; filename=dev-backup-{ts}.zip'}
+    )
+
+
+@app.route("/api/admin/backup/chats", methods=["GET"])
+@require_auth
+def admin_backup_chats():
+    """Export all chats as JSON."""
+    if request.user.get("role") != "admin":
+        return jsonify({"error": "Admin only"}), 403
+    db = db_read()
+    chats = db.get("chats", {})
+    return jsonify({"total": len(chats), "chats": chats})
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3501, debug=True)
