@@ -1388,6 +1388,36 @@ async function callAPI(userMessage, chat) {
               addTaskStep('🔧', `Инструмент: ${tool}${argsStr}${isHeal}`);
               addThinkingStep(streamMsgId, '🔧', `Инструмент: ${tool}${isHeal}`, tool, null, null);
               addTerminalLine(`$ ${tool}${argsStr}`, 'cmd');
+              // Update activity bar for fullscreen mode
+              {
+                const toolLabels = {
+                  'ssh_execute': 'Терминал', 'code_interpreter': 'Код',
+                  'browser_navigate': 'Браузер', 'browser_screenshot_check': 'Браузер',
+                  'browser_check_site': 'Браузер', 'read_file': 'Файлы',
+                  'write_file': 'Файлы', 'generate_file': 'Файлы',
+                  'web_search': 'Поиск', 'search_web': 'Поиск'
+                };
+                const toolIcons = {
+                  'ssh_execute': '>_', 'code_interpreter': '💻',
+                  'browser_navigate': '🌐', 'browser_screenshot_check': '📸',
+                  'browser_check_site': '🌐', 'read_file': '📄',
+                  'write_file': '📝', 'generate_file': '📝',
+                  'web_search': '🔍', 'search_web': '🔍'
+                };
+                const toolLabel = toolLabels[tool] || tool;
+                const toolIcon = toolIcons[tool] || '🔧';
+                const actionDesc = args.command || args.url || args.query || args.filename || args.code?.substring(0, 80) || 'Выполняю...';
+                window._rpLastTool = toolIcon + ' ' + toolLabel;
+                window._rpLastAction = 'Выполняет команду: ' + String(actionDesc).substring(0, 120);
+                // Update activity bar if fullscreen is open
+                const rp = document.getElementById('agentComputer');
+                if (rp && rp.classList.contains('ac-fullscreen')) {
+                  const actTool = document.getElementById('rpActivityTool');
+                  const actAction = document.getElementById('rpActivityAction');
+                  if (actTool) actTool.textContent = '🖥️ ' + toolLabel;
+                  if (actAction) actAction.textContent = window._rpLastAction;
+                }
+              }
               // Add Manus-style thumbnail for SSH/code tools
               if (['ssh_execute', 'code_interpreter'].includes(tool)) {
                 const sshDesc = tool === 'ssh_execute' 
@@ -1408,6 +1438,17 @@ async function callAPI(userMessage, chat) {
               addTaskStep(ok, `${parsed.tool || 'Результат'}${elapsed}: ${out || 'выполнено'}`);
               addThinkingStep(streamMsgId, ok, `${parsed.tool || 'Результат'}${elapsed}`, parsed.tool, out || null, parsed.screenshot || null);
               if (out) addTerminalLine(out, parsed.success !== false ? 'output' : 'error');
+              // Update activity bar for fullscreen mode
+              {
+                const resultStatus = parsed.success !== false ? '✅ Готово' : '❌ Ошибка';
+                const resultDesc = out ? out.substring(0, 120) : 'выполнено';
+                window._rpLastAction = resultStatus + ': ' + resultDesc;
+                const rp = document.getElementById('agentComputer');
+                if (rp && rp.classList.contains('ac-fullscreen')) {
+                  const actAction = document.getElementById('rpActivityAction');
+                  if (actAction) actAction.textContent = window._rpLastAction;
+                }
+              }
               // Show browser screenshot if available
               if (parsed.screenshot) {
                 updateAgentBrowserScreenshot(parsed.screenshot, parsed.tool, parsed.args);
@@ -1427,6 +1468,18 @@ async function callAPI(userMessage, chat) {
               addTaskStep('🏁', summary);
               addThinkingStep(streamMsgId, '🏁', summary);
               addTerminalLine('✓ ' + summary, 'success');
+              // Update activity bar
+              window._rpLastTool = '✅ Готово';
+              window._rpLastAction = summary;
+              {
+                const rp = document.getElementById('agentComputer');
+                if (rp && rp.classList.contains('ac-fullscreen')) {
+                  const actTool = document.getElementById('rpActivityTool');
+                  const actAction = document.getElementById('rpActivityAction');
+                  if (actTool) actTool.textContent = '🏁 Завершено';
+                  if (actAction) actAction.textContent = summary;
+                }
+              }
             } else if (type === 'stopped') {
               addTaskStep('⏹', parsed.text || 'Остановлено');
               addThinkingStep(streamMsgId, '⏹', parsed.text || 'Остановлено');
@@ -3676,7 +3729,47 @@ function updateAgentBrowserScreenshot(screenshotB64, toolName, args) {
 }
 function toggleACFullscreen() {
   const panel = document.getElementById('agentComputer');
-  if (panel) panel.classList.toggle('ac-fullscreen');
+  if (!panel) return;
+  const isFs = panel.classList.toggle('ac-fullscreen');
+  // Move panel to/from body for true fullscreen (bypass parent overflow/flex constraints)
+  if (isFs) {
+    panel._rpOrigParent = panel.parentElement;
+    panel._rpOrigNextSibling = panel.nextSibling;
+    document.body.appendChild(panel);
+  } else {
+    if (panel._rpOrigParent) {
+      if (panel._rpOrigNextSibling) {
+        panel._rpOrigParent.insertBefore(panel, panel._rpOrigNextSibling);
+      } else {
+        panel._rpOrigParent.appendChild(panel);
+      }
+    }
+  }
+  // Backdrop — move to body for true overlay over sidebar
+  const bd = document.getElementById('rpFsBackdrop');
+  if (bd) {
+    if (isFs) {
+      bd._origParent = bd.parentElement;
+      bd._origNext = bd.nextSibling;
+      document.body.insertBefore(bd, panel); // insert before panel so panel is on top
+    } else {
+      if (bd._origParent) {
+        if (bd._origNext) bd._origParent.insertBefore(bd, bd._origNext);
+        else bd._origParent.appendChild(bd);
+      }
+    }
+    bd.classList.toggle('active', isFs);
+  }
+  // Icons
+  const iconExpand = document.getElementById('rpFsIconExpand');
+  const iconCompress = document.getElementById('rpFsIconCompress');
+  if (iconExpand) iconExpand.style.display = isFs ? 'none' : '';
+  if (iconCompress) iconCompress.style.display = isFs ? '' : 'none';
+  // Activity bar — show in fullscreen
+  const actBar = document.getElementById('rpActivityBar');
+  if (actBar) actBar.style.display = isFs ? 'flex' : 'none';
+  // Prevent body scroll when fullscreen
+  document.body.style.overflow = isFs ? 'hidden' : '';
 }
 function renameChat(chatId) {
   renameChatInline(chatId, { stopPropagation: () => {} });

@@ -755,6 +755,42 @@ a{color:var(--accent)}
   transition:width var(--tr);
 }
 .rp.hidden{display:none}
+/* ─── FULLSCREEN OVERLAY ─── */
+.rp.ac-fullscreen{
+  position:fixed;inset:0;z-index:9999;
+  width:100%!important;height:100%!important;
+  border-left:none;
+  border-radius:0;
+  box-shadow:none;
+  animation:rpFsIn .18s ease;
+}
+@keyframes rpFsIn{from{opacity:.7;transform:scale(.98)}to{opacity:1;transform:scale(1)}}
+.rp-fs-backdrop{
+  display:none;position:fixed;inset:0;z-index:9998;
+  background:rgba(0,0,0,.55);
+  animation:rpBdIn .18s ease;
+}
+@keyframes rpBdIn{from{opacity:0}to{opacity:1}}
+.rp-fs-backdrop.active{display:block}
+/* Activity bar — shown in fullscreen */
+.rp-activity-bar{
+  display:none;align-items:center;gap:8px;
+  padding:0 16px;height:38px;
+  background:var(--bg3);border-bottom:1px solid var(--border);
+  font-size:12.5px;flex-shrink:0;
+}
+.rp.ac-fullscreen .rp-activity-bar{display:flex!important}
+.rp-activity-tool{
+  display:flex;align-items:center;gap:6px;
+  font-weight:600;color:var(--text);
+  white-space:nowrap;
+}
+.rp-activity-sep{color:var(--text3);font-size:11px}
+.rp-activity-action{
+  color:var(--text2);font-size:12px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  flex:1;
+}
 .rp-header{
   display:flex;align-items:center;gap:8px;
   padding:0 14px;height:var(--tb-h);
@@ -1567,16 +1603,24 @@ a{color:var(--accent)}
           </div>
         </div>
 
+        <!-- Fullscreen backdrop -->
         <!-- RIGHT PANEL (Agent Computer) -->
         <div class="rp hidden" id="agentComputer">
+          <!-- Activity bar (shown in fullscreen mode) -->
+          <div class="rp-activity-bar" id="rpActivityBar" style="display:none">
+            <span class="rp-activity-tool" id="rpActivityTool">🖥️ Компьютер Агента</span>
+            <span class="rp-activity-sep">|</span>
+            <span class="rp-activity-action" id="rpActivityAction">Ожидание...</span>
+          </div>
           <div class="rp-header">
             <span class="rp-title">🖥️ Компьютер Агента</span>
             <span class="rp-status ok" id="rpStatus">
               <span class="rp-sdot"></span>
               <span id="rpStatusTxt">Готов к работе</span>
             </span>
-            <button class="rp-hbtn" title="Полный экран" onclick="toggleACFullscreen()">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>
+            <button class="rp-hbtn" id="rpFullscreenBtn" title="Полный экран" onclick="toggleACFullscreen()">
+              <svg id="rpFsIconExpand" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>
+              <svg id="rpFsIconCompress" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><path d="M8 3v3a2 2 0 01-2 2H3m18 0h-3a2 2 0 01-2-2V3m0 18v-3a2 2 0 012-2h3M3 16h3a2 2 0 012 2v3"/></svg>
             </button>
             <button class="rp-hbtn" onclick="toggleAgentComputer()" title="Закрыть">✕</button>
           </div>
@@ -2110,8 +2154,25 @@ function toggleAgentComputer() {
   }
 }
 function toggleACFullscreen() {
-  const rp = document.getElementById('agentComputer');
-  rp.classList.toggle('ac-fullscreen');
+  var rp = document.getElementById('agentComputer');
+  var bd = document.getElementById('rpFsBackdrop');
+  var iconExpand = document.getElementById('rpFsIconExpand');
+  var iconCompress = document.getElementById('rpFsIconCompress');
+  var isFs = rp.classList.toggle('ac-fullscreen');
+  if (bd) bd.classList.toggle('active', isFs);
+  if (iconExpand) iconExpand.style.display = isFs ? 'none' : '';
+  if (iconCompress) iconCompress.style.display = isFs ? '' : 'none';
+  // Update activity bar
+  if (isFs) {
+    var lastAction = window._rpLastAction || 'Ожидание...';
+    var lastTool = window._rpLastTool || 'Компьютер Агента';
+    var actTool = document.getElementById('rpActivityTool');
+    var actAction = document.getElementById('rpActivityAction');
+    if (actTool) actTool.textContent = '🖥️ ' + lastTool;
+    if (actAction) actAction.textContent = lastAction;
+  }
+  // Prevent body scroll when fullscreen
+  document.body.style.overflow = isFs ? 'hidden' : '';
 }
 function requestBrowserTakeover() {
   var browserTab = document.getElementById("tab-browser-btn");
@@ -2768,5 +2829,6 @@ function renderCommandsUI(commands) {
 window.renderCommandsUI = renderCommandsUI;
 </script>
 <script src="/app.js"></script>
+  <div class="rp-fs-backdrop" id="rpFsBackdrop" onclick="toggleACFullscreen()"></div>
 </body>
 </html>
