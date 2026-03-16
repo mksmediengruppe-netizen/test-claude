@@ -863,26 +863,37 @@ function convertRawMarkdownLinks(html) {
   return html;
 }
 
-function renderMarkdown(text) {
-  if (typeof marked === 'undefined') return escapeHtml(text).replace(/\n/g, '<br>');
-  // Fix sandbox: protocol URLs that may be cached in localStorage
-  const _fixBaseUrl = (STATE.settings?.backendUrl || CONFIG.BACKEND_URL || window.location.origin).replace(/\/$/, '');
-  text = text.replace(/sandbox:(\/(api\/files\/[^)\s"']+))/g, _fixBaseUrl + '$1');
-  try {
-    marked.setOptions({
-      breaks: true,
-      gfm: true,
-      highlight: function(code, lang) {
+// Initialize marked.js with proper settings (compatible with v5+)
+let _markedInitialized = false;
+function _initMarked() {
+  if (_markedInitialized || typeof marked === 'undefined') return;
+  _markedInitialized = true;
+  // Use marked.use() API (v5+) instead of deprecated setOptions
+  marked.use({
+    breaks: true,
+    gfm: true,
+    renderer: {
+      code(token) {
+        const lang = token.lang || '';
+        const code = token.text || '';
         const artifact = getArtifactInfo(lang, code);
         const downloadBtn = artifact
           ? `<button class="code-action-btn artifact-download" onclick="downloadCodeBlock(this,'${artifact.ext}','${artifact.mime}')" title="Скачать файл">${artifact.icon} Скачать .${artifact.ext}</button>`
           : '';
-        return `<div class="code-block-header"><span class="code-lang">${lang || 'code'}</span><div class="code-actions">${downloadBtn}<button class="code-action-btn" onclick="copyCode(this)">Копировать</button></div></div><code>${escapeHtml(code)}</code>`;
+        return `<pre><code class="language-${lang || 'plaintext'}"><div class="code-block-header"><span class="code-lang">${lang || 'code'}</span><div class="code-actions">${downloadBtn}<button class="code-action-btn" onclick="copyCode(this)">Копировать</button></div></div>${escapeHtml(code)}</code></pre>`;
       }
-    });
+    }
+  });
+}
+
+function renderMarkdown(text) {
+  if (typeof marked === 'undefined') return escapeHtml(text).replace(/\n/g, '<br>');
+  // Fix sandbox: protocol URLs that may be cached in localStorage
+  const _fixBaseUrl = (STATE.settings?.backendUrl || CONFIG.BACKEND_URL || window.location.origin).replace(/\/$/, '');
+  text = text.replace(/sandbox:(\/(\/api\/files\/[^)\s"']+))/g, _fixBaseUrl + '$1');
+  try {
+    _initMarked();
     let html = marked.parse(text);
-    // Wrap pre blocks
-    html = html.replace(/<pre><code/g, '<pre><code');
     // Convert /api/files/xxx/download links into styled download cards (HTML <a> tags)
     const _mdBaseUrl = (STATE.settings?.backendUrl || CONFIG.BACKEND_URL || window.location.origin).replace(/\/$/, '');
     html = html.replace(
@@ -901,6 +912,7 @@ function renderMarkdown(text) {
     html = convertRawMarkdownLinks(html);
     return html;
   } catch(e) {
+    console.error('renderMarkdown error:', e);
     var fallback = escapeHtml(text).replace(/\n/g, '<br>');
     fallback = convertRawMarkdownLinks(fallback);
     return fallback;
@@ -1383,6 +1395,11 @@ async function callAPI(userMessage, chat) {
                   : (args.code ? args.code.substring(0, 60) : 'Выполнение кода...');
                 addAgentThumbnailToChat(null, tool, sshDesc);
               }
+              // Show placeholder thumbnail immediately when browser_navigate starts
+              if (['browser_navigate', 'browser_check_site', 'browser_screenshot_check'].includes(tool)) {
+                const navUrl = args.url || args.query || 'Открываю браузер...';
+                addAgentThumbnailToChat(null, tool, navUrl);
+              }
             } else if (type === 'tool_result') {
               // Backend sends 'preview' field, not 'output'
               const out = (parsed.preview || parsed.output || parsed.summary || '').substring(0, 200);
@@ -1448,6 +1465,16 @@ async function callAPI(userMessage, chat) {
             } else if (type === 'self_check_content') {
               fullText += parsed.text || '';
               updateStreamingMessage(streamMsgId, '🛡️ *Проверенный ответ:*\n\n' + fullText);
+            } else if (type === 'human_handoff') {
+              // CAPTCHA or human intervention needed
+              const handoffMsg = parsed.message || 'Требуется участие человека';
+              const handoffUrl = parsed.url || '';
+              const handoffReason = parsed.reason || 'captcha';
+              addTaskStep('🤚', handoffMsg);
+              addThinkingStep(streamMsgId, '🤚', handoffMsg);
+              addTerminalLine('⚠️ ' + handoffMsg, 'warn');
+              // Show human handoff banner in chat
+              showHumanHandoffBanner(streamMsgId, handoffMsg, handoffUrl, handoffReason);
             } else if (type === 'error') {
               const errMsg = parsed.text || parsed.message || parsed.error || 'Ошибка';
               addTaskStep('❌', errMsg);
@@ -3974,5 +4001,62 @@ function toggleDevModelDropdown() {
         }
       });
     }, 10);
+  }
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// ══ HUMAN HANDOFF (CAPTCHA / manual intervention) ═════════════
+// ══════════════════════════════════════════════════════════════
+
+function showHumanHandoffBanner(msgId, message, url, reason) {
+  const messagesEl = document.getElementById('messages');
+  if (!messagesEl) return;
+
+  // Remove any existing handoff banner
+  const prev = document.getElementById('humanHandoffBanner');
+  if (prev) prev.remove();
+
+  const reasonIcons = {
+    captcha: '🤖',
+    login: '🔐',
+    verification: '✅',
+    manual: '🤚'
+  };
+  const icon = reasonIcons[reason] || '🤚';
+
+  const banner = document.createElement('div');
+  banner.id = 'humanHandoffBanner';
+  banner.className = 'human-handoff-banner';
+  banner.innerHTML = `
+    <div class="handoff-icon">${icon}</div>
+    <div class="handoff-content">
+      <div class="handoff-title">Требуется ваше участие</div>
+      <div class="handoff-message">${escapeHtml(message)}</div>
+      ${url ? `<div class="handoff-url"><a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a></div>` : ''}
+    </div>
+    <div class="handoff-actions">
+      ${url ? `<button class="handoff-btn handoff-btn-open" onclick="window.open('${escapeHtml(url)}', '_blank')">Открыть в браузере</button>` : ''}
+      <button class="handoff-btn handoff-btn-continue" onclick="dismissHumanHandoff('${msgId}')">Готово, продолжить</button>
+      <button class="handoff-btn handoff-btn-skip" onclick="dismissHumanHandoff('${msgId}', true)">Пропустить</button>
+    </div>
+  `;
+
+  messagesEl.appendChild(banner);
+  scrollToBottom();
+  showToast('🤚 Требуется ваше участие — решите CAPTCHA и нажмите "Готово"', 'warn', 8000);
+}
+
+function dismissHumanHandoff(msgId, skip) {
+  const banner = document.getElementById('humanHandoffBanner');
+  if (banner) {
+    banner.style.opacity = '0';
+    banner.style.transform = 'translateY(-8px)';
+    setTimeout(() => banner.remove(), 300);
+  }
+  if (!skip) {
+    showToast('✅ Продолжаю работу...', 'success');
+    // Send a "continue" message to the agent if still streaming
+    // The user can also just type a follow-up message
   }
 }

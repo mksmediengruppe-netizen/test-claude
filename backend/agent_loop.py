@@ -512,7 +512,7 @@ AGENT_SYSTEM_PROMPT = """Ты — Super Agent v6.0, автономный AI-ин
 16. Если нужны SSH-данные и не указаны — спроси у пользователя.
 17. Работай пошагово: планируй → выполняй → проверяй → итерируй.
 18. Отвечай на русском языке.
-19. При ошибке — анализируй причину и пробуй исправить (до 3 попыток).
+19. При ошибке — анализируй причину и пробуй исправить (до 3 попыток). Если исправить не удалось, ЧЕСТНО сообщи об ошибке пользователю. НЕ создавай поддельные (mock/fake) файлы или результаты, если реальная задача не выполнена.
 20. После создания файла через generate_file — система автоматически покажет кнопку скачивания. НЕ пиши ссылки [Скачать](url) в тексте — они не работают.
 21. Для ДЛИННЫХ ответов — пиши развёрнутый текст в чат. Создавай файл через generate_file ТОЛЬКО если пользователь явно попросил файл для скачивания.
 22. Пиши подробные ответы в чат. Файлы создавай только по явному запросу пользователя.
@@ -521,6 +521,7 @@ AGENT_SYSTEM_PROMPT = """Ты — Super Agent v6.0, автономный AI-ин
 24. При веб-поиске ВСЕГДА указывай источники: [Источник](url)
 25. Для графиков и артефактов — показывай их inline в чате.
 26. Если загружен файл с данными — предложи анализ, визуализацию, выводы.
+27. Если инструмент сообщает об обнаружении CAPTCHA (human_handoff), остановись и попроси пользователя решить её, дождись его ответа.
 
 ФОРМАТ ОТВЕТА:
 1. Пиши профессионально и структурированно. НЕ используй эмодзи в заголовках и тексте.
@@ -2172,6 +2173,17 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
                 if _screenshot:
                     _tool_result_event["screenshot"] = _screenshot
                 yield self._sse(_tool_result_event)
+
+                # ── Human Handoff: CAPTCHA / bot-check detected ──
+                if result.get("human_needed") and tool_name in _browser_tools:
+                    _human_msg = result.get("human_message", "Обнаружена CAPTCHA. Пожалуйста, решите её вручную.")
+                    yield self._sse({
+                        "type": "human_handoff",
+                        "reason": result.get("human_reason", "captcha"),
+                        "message": _human_msg,
+                        "url": result.get("url", ""),
+                        "screenshot": _screenshot
+                    })
 
                 # File download event
                 _ftools = ("generate_file","generate_image","generate_chart","generate_report","edit_image","generate_design","create_artifact","code_interpreter")

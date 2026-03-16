@@ -1763,3 +1763,85 @@ kbd {
   .main { width: 100%; }
   .chat-body { overflow: visible; }
 }
+
+/* ══ HUMAN HANDOFF BANNER ══ */
+.human-handoff-banner {
+  background: var(--bg3);
+  border: 1px solid #f59e0b;
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  transition: all 0.3s ease;
+}
+.handoff-icon {
+  font-size: 24px;
+  background: rgba(245, 158, 11, 0.1);
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+.handoff-content {
+  flex: 1;
+}
+.handoff-title {
+  font-weight: 600;
+  color: #f59e0b;
+  margin-bottom: 4px;
+  font-size: 15px;
+}
+.handoff-message {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.handoff-url {
+  margin-top: 8px;
+  font-size: 13px;
+  word-break: break-all;
+}
+.handoff-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 140px;
+}
+.handoff-btn {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+  text-align: center;
+}
+.handoff-btn-continue {
+  background: #f59e0b;
+  color: #000;
+}
+.handoff-btn-continue:hover {
+  background: #d97706;
+}
+.handoff-btn-open {
+  background: var(--bg4);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.handoff-btn-open:hover {
+  background: var(--bg-hover);
+}
+.handoff-btn-skip {
+  background: transparent;
+  color: var(--text2);
+}
+.handoff-btn-skip:hover {
+  color: var(--text);
+}

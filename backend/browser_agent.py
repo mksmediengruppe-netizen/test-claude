@@ -24,6 +24,23 @@ except ImportError:
 _pw_lock = threading.Lock()
 
 
+# CAPTCHA / human-needed patterns
+_CAPTCHA_PATTERNS = [
+    r'captcha', r'recaptcha', r'hcaptcha', r'turnstile',
+    r'\bcheckbox\b.*\bhuman\b', r'prove.*you.*human', r'\bbot\b.*\bdetect',
+    r'security.*check', r'\bverif.*robot', r'\bchallenge\b',
+    r'\byandex.*captcha', r'smartcaptcha', r'showcaptcha',
+    r'access.*denied.*bot', r'cloudflare.*checking',
+]
+_CAPTCHA_RE = re.compile('|'.join(_CAPTCHA_PATTERNS), re.IGNORECASE)
+
+
+def _detect_captcha(html: str, title: str = '') -> bool:
+    """Return True if page appears to show a CAPTCHA or bot-check."""
+    sample = (title + ' ' + html[:8000]).lower()
+    return bool(_CAPTCHA_RE.search(sample))
+
+
 def _take_playwright_screenshot(url: str, width: int = 1280, height: int = 800) -> str | None:
     """Take a real browser screenshot using Playwright. Returns base64 PNG or None."""
     if not _playwright_available:
@@ -74,7 +91,12 @@ class BrowserAgent:
             if screenshot_b64:
                 self._last_screenshot_b64 = screenshot_b64
 
-            return {
+            # Detect CAPTCHA / bot-check
+            title_match = re.search(r"<title[^>]*>(.*?)</title>", resp.text, re.IGNORECASE | re.DOTALL)
+            page_title = title_match.group(1).strip() if title_match else ""
+            captcha_detected = _detect_captcha(resp.text, page_title)
+
+            result = {
                 "success": True,
                 "url": resp.url,
                 "status_code": resp.status_code,
@@ -84,6 +106,11 @@ class BrowserAgent:
                 "elapsed_ms": int(resp.elapsed.total_seconds() * 1000),
                 "screenshot": screenshot_b64  # base64 PNG or None
             }
+            if captcha_detected:
+                result["human_needed"] = True
+                result["human_reason"] = "captcha"
+                result["human_message"] = f"CAPTCHA обнаружена на странице {resp.url}. Пожалуйста, откройте браузер и решите CAPTCHA вручную, затем нажмите 'Продолжить'."
+            return result
         except Exception as e:
             return {
                 "success": False,
